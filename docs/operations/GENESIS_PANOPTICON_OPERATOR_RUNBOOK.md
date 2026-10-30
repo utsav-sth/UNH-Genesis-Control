@@ -1,34 +1,71 @@
 # GENESIS Phase-I — Panopticon Live Operator Runbook
 
-**Release / run basis:** 29 October 2026 physical integration session
-
+**Current operator baseline (30 October 2026):** `main` and `feature/visualizer-integration` both at `4846a4d6bae0a99a4556709e4428ea38c506bb1c` after verified fast-forward and GitHub push. The operator subsequently reported a successful run from `main`.
 **Repository:** `UNH-Genesis-Control`
-
-**Required worktree:** `/home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration`
-
-**Required branch:** `feature/visualizer-integration`
-
-**Validated source commit:** `fa3262e7a5c0117102beac216024e4e652606676`
-
-**Validation tag:** `panopticon-integration-partial-validated-20261029T173322Z`
-
+**Working directory:** Any **explicitly approved Genesis worktree**. Recommended default: `/home/utsav/UNH-Genesis-Control/worktrees/main`. The runbook uses `$GENESIS_WT` instead of hard-coding a working tree.
+**Historical physical integration basis:** 29 October 2026, source commit `fa3262e7a5c0117102beac216024e4e652606676`; immutable partial-validation tag `panopticon-integration-partial-validated-20261029T173322Z`. The subsequent `4846a4d` commit adds operator documentation; **the historical tag is not moved**.
 **Operating host:** Ubuntu/WSL on `DESKTOP-M34HHNQ`, user `utsav`
-
 **Conda environments:** `genesis-p1` for Genesis; `pynmr` for the separate PyNMR application
+**Scope:** Live viewing, authorized subsystem startup, software health, archiving, troubleshooting, and controlled shutdown. October 30 confirms operation from `main` but does **not** independently certify Magnet ramp/heater control, RF burning, scientifically valid polarization, or all safety interlocks.
 
-**Scope:** Live viewing, authorized subsystem startup, software health, archiving, troubleshooting, and controlled shutdown. **Partial** physical integration only; not a certification of Magnet operation, RF burning, valid polarization, or all safety interlocks.
-
-> **READ THIS FIRST.** This is an operating aid for trained, authorized laboratory personnel—not permission to energize equipment. Do not operate an unattended cryogenic, high-field, high-power microwave, or RF system without the responsible experiment operator and the laboratory's current safety/physical procedures. If hardware state cannot be positively verified, **STOP and retain monitoring/ownership**. No command here authorizes bypassing an interlock or using a generic `kill` to free a device. The October 29 checkout is currently **locally** committed/tagged; no GitHub deployment was verified. Never change, switch to, merge, pull, push, or modify Git `main` or another branch while following this runbook.
+> [!CAUTION]
+> **PHYSICAL SAFETY FIRST.** This is an operating aid for trained, authorized laboratory personnel, not permission to energize equipment. Do not operate an unattended cryogenic, high-field, high-power microwave or RF system without the responsible experiment operator and laboratory SOP. If the physical state cannot be positively verified, **STOP and retain monitoring/ownership**. Never bypass shutdown interlocks just to release a screen session or port. Do not switch Git worktrees/branches or make Git changes during a live hardware run; working in `main` is now permitted **for operation**, not unrestricted live editing.
 
 ## How to use this document
 
-- **[29-OCT RUN]** means the action or output was exercised successfully in the October 29 run.
-- **[SOURCE]** means the command or behavior was found in the checked-in source or Ellie/Prof. Long's startup script but was **not** physically exercised in this particular run; verify locally before relying on it.
-- **[CHECK]** means a read-only inspection or standard Linux diagnostic.
-- **[OPERATOR]** means a deliberate physical action or safety decision by a qualified human.
-- A command block contains **commands only**, ready to paste into a shell. Explanations stay outside code blocks.
-- Run shell commands **on Ubuntu/WSL as `utsav`**, unless a step explicitly says to SSH to the named Raspberry Pi. Do **not** paste an Ubuntu command at a Raspberry Pi shell prompt.
-- The file is intended to be added to the **feature worktree** as `docs/operations/GENESIS_PANOPTICON_OPERATOR_RUNBOOK.md`. This downloaded copy does not automatically modify the checkout.
+### Visually distinguished command types (applies to **every subsystem**)
+
+| Marker in this runbook | Who uses it | Meaning |
+|---|---|---|
+| **🟩 OPERATOR / RUN, STOP, STATUS** | Authorized trained operator | Actual routine startup, shutdown, GUI launch or normal `./scripts/genesisctl.sh ...` status/readiness command |
+| **🟦 EXPERT / DIAGNOSTIC** | Troubleshooter | Read-only process, log, port, socket, Git, network, EPICS or archive investigation. **Not an operational start/stop step.** |
+| **🟧 SPECIALIST / CONTROLLED SERVICE** | Hardware/DAQ lead | A manually managed IOC lifecycle, physical sequence, device-clock action or a targeted stop requiring additional authorization; **not** a generic operator command |
+| **⬜ REFERENCE / OUTPUT** | Everyone | Historical log snippets, paths or expected output; **not a command to execute** |
+
+Color is reinforced by text labels for terminals and Markdown renderers that do not display color emoji. **Every executable command block below is preceded by one of these labels.** Blocks containing both routine status and expert diagnostics explicitly identify both. Only commands marked **OPERATOR / RUN, STOP, STATUS** or a separately authorized **SPECIALIST** step should be used for normal operation.
+
+- **[29-OCT RUN]** means physically exercised in the original October 29 integration run.
+- **[30-OCT OBSERVED]** means observed in the user's October 30 `main` run / shutdown console logs. A cleared local port or screen is **not** proof that the physical instrument was safe.
+- **[SOURCE]** means found in source or earlier startup instructions, **not** independently physically validated by this runbook.
+- **[CHECK]** is read-only inspection, not an authorization to change hardware.
+- **[OPERATOR]** is an intentional physical action or safety decision by a qualified person.
+- All shell commands are for Ubuntu/WSL as `utsav`, except those explicitly run via SSH on a named Raspberry Pi. Do not paste Ubuntu local commands into the Pi shell.
+
+### Choose the current worktree once in each Genesis terminal
+
+This initialization works **from inside any Genesis worktree directory** (including a nested folder); if you start outside the repository, it defaults to `main`. To deliberately use another worktree, set `GENESIS_WT` to its absolute path **before** running the block. This is terminal-local; repeat in every new Genesis terminal. The **PyNMR** terminal instead enters `/home/utsav/jlab_pynmr` and activates `pynmr`.
+
+**🟩 OPERATOR / WORKTREE & ENVIRONMENT SETUP:**
+
+```bash
+conda activate genesis-p1
+if [ -z "${GENESIS_WT:-}" ]; then
+  GENESIS_WT="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' /home/utsav/UNH-Genesis-Control/worktrees/main)"
+fi
+export GENESIS_WT
+cd "$GENESIS_WT"
+printf 'Account=%s\nWorktree=%s\nBranch=%s\nSHA=%s\n' \
+  "$(id -un)" "$PWD" "$(git branch --show-current)" "$(git rev-parse --short HEAD)"
+```
+
+**Require `utsav`, an explicitly approved branch and the expected SHA before connecting instruments.** As of October 30 the two tested worktrees `main` and `feature/visualizer-integration` have SHA `4846a4d`. Later changes or other worktrees require their own review; an old detached `repo/` checkout is **not** automatically the current baseline. Never run two physical owners from different worktrees at the same time.
+
+### Quick operator command map (full safety conditions are in the numbered sections)
+
+| Subsystem | 🟩 Routine operation / status | 🟧 Specialist / manual service |
+|---|---|---|
+| Panopticon | `/usr/local/bin/phoebus -settings ... -resource ...` (§2); normal GUI Exit (§12.9) | Verified own-process `TERM` fallback only when necessary (§12.9) |
+| Cryo | `./scripts/genesisctl.sh cryo-status`, `cryo-start`, `cryo-stop`, `cryo-phoebus` (§3, §12.6) | Pi USB/bridge recovery only under hardware SOP |
+| Trend History | View the linked plots (§4) | `screen -dmS genesis-hist ...` and verified `screen -S genesis-hist -X quit` (§4, §12.7) |
+| Microwave | `./scripts/genesisctl.sh mw-status`, `mw-start`, `mw-rf-ready`, `mw-stop` (§5, §12.4) | Hardware VDI/UCA/USB sequence; independent SIG scope IOC release (§12.4) |
+| PyNMR | `python pynmr_main.py -p Deuteron`; GUI Stop/Exit (§6, §12.3) | Event/FPGA/IPC debugging (§6, §7) |
+| ssRF | `./scripts/genesisctl.sh ssrf-physical-status`, `./scripts/ssrf-start-auto-clock.sh`, `./scripts/genesisctl.sh ssrf-stop` (§7, §12.2) | Pi clock sync is **state-changing**; specialist RF/burn procedures not covered |
+| Magnet | Read-only GUI/readbacks (§8) | Manual read-only IOC launch; specialist-approved monitor release, **not magnet power-down** (§8, §12.5) |
+| Master Archiver | `./scripts/genesisctl.sh master-archive-start`, `master-archive-status`, `master-archive-stop` (§9, §12.8) | Per-PV quality/CSV/JSONL diagnostics (§9) |
+| Streamlit | `./scripts/genesisctl.sh archive-viewer`; foreground `Ctrl+C` (§10, §12.1) | Port `8501` owner diagnostics (§10) |
+| Complete-system check | `./scripts/genesisctl.sh status` and per-subsystem status | `screen`, `ps`, `ss`, `ip`, `curl`, archive forensic checks (§11, §12.10–12.11) |
+
+**The table is an index, not a shortcut around interlocks, operator prompts or physical preflight.**
 
 ---
 
@@ -36,7 +73,7 @@
 
 **Startup (controlled):**
 
-1. Confirm authority, equipment readiness, correct branch/SHA, and exclusive device ownership.
+1. Confirm authority, equipment readiness, **approved current worktree/SHA**, and exclusive device ownership. Run the per-terminal `$GENESIS_WT` setup.
 2. **Open Panopticon** using its **own** live Phoebus settings. Some widgets are magenta while IOCs are still down; this is expected.
 3. Physically prepare Cryo devices, the shared Raspberry Pi, and connections. Start **all 19 Cryo IOCs** and inspect `cryo-status`. Optionally open the dedicated Cryo GUI.
 4. Start **Trend History IOC**, CA port `5130`; validate that the Panopticon time-history charts populate.
@@ -44,12 +81,12 @@
 6. Start **PyNMR** in its own terminal; check its hardware route, stream configuration, protected-event socket, and ensure there is no competing fitter or PyNMR producer. **Do not start a standalone fitter.**
 7. Validate Keysight and ssRF hardware, correct its **10 ms waveform period** and Raspberry Pi clock conditions; run `ssrf-start-auto-clock.sh` **once**, which starts the full ssRF stack in **operator burn mode** (inspect current script arguments if it changes). Its **ssRF-owned protected fitter** must bind to the running PyNMR process.
 8. Verify completed PyNMR acquisitions are **accepted** by the protected fitter and live fitter/plot PVs update. Do not confuse a noise spectrum with a meaningful polarization measurement.
-9. **Magnet (optional, specialist only):** with Prof. Long's authorization, and only if the magnet supply is in a permitted state, start the Ellie-version IPS120 IOC **read-only**. It was **not started** on October 29; disconnected Magnet PVs are expected otherwise.
+9. **Magnet (optional, specialist only):** with Magnet operator authorization, start the IPS120 IOC **read-only** if permitted. It was offline on October 29, but a separate read-only IOC session was observed on October 30. Magnet release requires physical HOLD/heater/monitoring sign-off (§8.4, §12.5).
 10. Start **Unified Master Archiver** (`448` configured PVs in the October 29 release); check rising snapshots/events and quality. Open the **Streamlit viewer** and inspect its live archive session.
 
-**Shutdown (reverse/safe):** close Streamlit; safe-stop **ssRF first**, then PyNMR, safe-stop Microwave and complete its physical shutdown; stop optional Magnet only under its specialist procedure; safe-stop Cryo after confirming coldboard OFF and independent monitoring; stop Trend History; request/verify Master Archiver clean finalization; close **Panopticon LAST**. Verify sessions, process ownership, and archive persistence.
+**Shutdown (reverse/safe):** close Streamlit; safe-stop **ssRF first**, then PyNMR; safe-stop Microwave and complete its physical shutdown; stop any **independent Siglent scope** after measurement release; stop optional **read-only Magnet IOC only under its physical specialist procedure**; safe-stop Cryo after confirming coldboard OFF and independent monitoring; stop Trend History; request/verify Master Archiver finalization; close **Panopticon LAST**. Verify both screen **and child-process/port** exit, plus archive persistence. During network loss use §12.11 rather than force-clearing ports.
 
-**Never use** `./scripts/genesisctl.sh stop` or `force-stop` as generic shutdowns; they are deliberately disabled. Never run Ellie’s `scripts/live_laptop/start.sh` or `stop.sh` unreviewed on this worktree: that launcher has a **different environment/layout**, starts a **standalone fitter** and can **edit Magnet and LS455 YAML**, while its stop script includes aggressive process termination. This runbook uses independently managed validated subsystem commands instead.
+**Never use** `./scripts/genesisctl.sh stop` or `force-stop` as generic shutdowns; they are deliberately disabled. Never run Ellie's `scripts/live_laptop/start.sh` or `stop.sh` unreviewed on any live worktree: that launcher has a different environment/layout, starts a standalone fitter, can **edit Magnet and LS455 YAML**, and includes aggressive stop behavior. Use the subsystem-specific commands below.
 
 ---
 
@@ -71,32 +108,33 @@ Use five terminals, preferably keeping them open for the session:
 
 **Do not launch** the standalone fitter in Terminal 4. The supported online fitter is created by the complete ssRF stack.
 
-### 1.2 Confirm the frozen release [CHECK]
+### 1.2 Confirm the current approved release [OPERATOR STATUS + EXPERT PROVENANCE]
 
-Run at the beginning of **every Genesis Ubuntu terminal** (except PyNMR's terminal, where you activate `pynmr`):
+First run the terminal setup in **How to use this document**, then confirm the selected checkout and the supported commands. No branch checkout, pull or Git mutation is required for operation.
+
+**🟩 OPERATOR / HELP & CURRENT WORKTREE STATUS:**
 
 ```bash
-conda activate genesis-p1
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 printf 'Account=%s\nPath=%s\nBranch=%s\nCommit=%s\n' \
   "$(id -un)" "$PWD" "$(git branch --show-current)" "$(git rev-parse HEAD)"
-git status --short
 ./scripts/genesisctl.sh help
 ```
 
-**Required**: account `utsav`, exact worktree and branch above. The October 29 validated commit is `fa3262e7…`. If `HEAD` has changed, **do not assume** the new version was accepted: locate the annotated tag and obtain reauthorization. The source and this runbook can be updated on a later feature-only commit, but doing so is a **new** version; it must not be silently called the October 29 frozen runtime.
-
-To verify the tag **without checking anything out**:
+**🟦 EXPERT / GIT & HISTORICAL TAG PROVENANCE (READ-ONLY):**
 
 ```bash
+git status --short
 git rev-parse HEAD
 git rev-parse 'panopticon-integration-partial-validated-20261029T173322Z^{}'
-git status --short
+git log -3 --oneline
 ```
 
-The two SHAs must match for an exact frozen run. `git status --short` should be empty (except intentionally added, documented local-only data; **do not** automatically `git clean`, stash, checkout, or reset). Keep the `local_data/` archive **outside Git**.
+As of October 30, `main` and `feature/visualizer-integration` point to **`4846a4d`**. The October 29 validation tag resolves to **`fa3262e`** and intentionally **does not match current HEAD** because the operator-runbook commit came afterward. Do **not** move the tag to make SHAs match. A clean Git status is desirable, but a modified doc should be reviewed rather than erased with `git clean`, checkout or reset. `local_data/` remains outside Git.
 
 ### 1.3 Establish read-only baseline and ownership [CHECK]
+
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
 
 ```bash
 ./scripts/genesisctl.sh status
@@ -146,9 +184,11 @@ Don't infer a TCP service from a PV prefix. Cryo, Microwave and ssRF have **diff
 
 At Terminal 1, ensure a graphical session exists (`echo "$DISPLAY"`, or use a supported local WSLg / authorized X-forwarding method) and **do not** use a stale Phoebus instance with different settings.
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 conda activate genesis-p1
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ls -l /usr/local/bin/phoebus gui/genesis_panopticon.bob configs/phoebus/panopticon_live.ini
 echo "DISPLAY=$DISPLAY"
 ps -eo user,pid,args | grep -E '[p]roduct-4.7.4-SNAPSHOT.jar|[g]enesis_panopticon.bob' || true
@@ -158,8 +198,10 @@ If the existing Java process is another operator's or has unknown settings, **ST
 
 ### 2.2 Start live Panopticon in Terminal 1
 
+**🟩 OPERATOR / LAUNCH PANOPTICON GUI:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 /usr/local/bin/phoebus \
   -settings "$PWD/configs/phoebus/panopticon_live.ini" \
   -resource "file://$PWD/gui/genesis_panopticon.bob"
@@ -167,7 +209,7 @@ cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
 
 Keep Terminal 1 open; a Java process should appear in `ps`. Do not treat the shell's initial prompt or harmless JavaFX warnings as proof that the GUI failed—look for the actual Phoebus window.
 
-**Critical Oct 29 issue — Keysight magenta:** The source configuration previously omitted `192.168.1.24:5064`. This was corrected in commit `fa3262e…`. If other PVs work but the WaveGen widget is magenta, check that **this exact file and commit** are loaded, and that the Keysight IOC is running on the Pi. **Merely closing a display tab can reuse the old Java process and its old CA address list**. Exit the entire *correctly identified* Panopticon Java application, verify its process is gone, then relaunch with the absolute settings file. Do not modify a YAML or rewire a Pi to fix a Phoebus configuration problem.
+**Critical Oct 29 issue — Keysight magenta:** The source configuration previously omitted `192.168.1.24:5064`. This was corrected in commit `fa3262e…` and is included in `main` at `4846a4d`. If other PVs work but the WaveGen widget is magenta, check that the **selected worktree's actual configuration** is loaded, and that the Keysight IOC is running on the Pi. **Merely closing a display tab can reuse the old Java process and its old CA address list**. Exit the entire *correctly identified* Panopticon Java application, verify its process is gone, then relaunch with the absolute settings file. Do not modify a YAML or rewire a Pi to fix a Phoebus configuration problem.
 
 ### 2.3 Panopticon page navigation and plot expectations
 
@@ -188,6 +230,8 @@ The Cryo stack includes instrument readbacks, safety/alarm summaries, archiving 
 Known Cryo components: Siglent coldboard supply, MKS902B cell gauge, TPG262, IONIVAC gauge and ion pump, LS455 fringe-field instrument, Lakeshore LS224 fridge and magnet units, Roots Right/Left/Separator flowmeters, fridge and magnet LHe monitors, low manometer, safety interlock, target status, save/restore, subsystem archiver and alarm summary. On Oct 29 **19 Cryo IOCs** started; device power and network availability may vary per run.
 
 **Network only, before starting:**
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 ping -c 1 -W 2 192.168.1.24 || true
@@ -212,6 +256,8 @@ On Oct 29, `192.168.1.24` hosted the Keysight **and** these two Cryo USB periphe
 
 **Read-only Pi diagnosis [CHECK]:**
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 ssh unhpoltarg@192.168.1.24 '
   echo "USB inventory"; lsusb; lsusb -t;
@@ -227,9 +273,10 @@ A bridge can listen while the actual sensor is absent. A `COMM=0`, `NaN`, or sta
 
 ### 3.3 Start Cryo IOCs (Terminal 2)
 
+**🟩 OPERATOR / CRYO START & STATUS:**
+
 ```bash
-conda activate genesis-p1
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh cryo-status
 ./scripts/genesisctl.sh cryo-start
 ./scripts/genesisctl.sh cryo-status
@@ -239,12 +286,16 @@ cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
 
 Verify screens and readbacks:
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
 screen -ls | grep genesis-cryo || true
 ./scripts/genesisctl.sh cryo-status
 ```
 
 Optional dedicated Cryo GUI (only when desired; Panopticon already links Cryo):
+
+**🟩 OPERATOR / OPTIONAL DISPLAY LAUNCH:**
 
 ```bash
 ./scripts/genesisctl.sh cryo-phoebus
@@ -258,7 +309,7 @@ Do not launch a second physical Cryo IOC manager because a GUI is blank. Check f
 - **[RUN]** Low manometer `VAC:LOW:COMM=0`, `Mano_PI=nan`; historic `Mano_Status=OK` was **stale** and must not be trusted as live.
 - **[RUN]** Cryo coldboard `COMM=0` in one pre-shutdown status; do not assume its output state. The managed shutdown later positively read `Coldboard_Mode=0` and passed.
 - **[RUN]** Cryo safety fault reason `F1_TI 301.9 K >= 4.5 K` during a warm/nonproducing system. This was **not** a clearance for a real cooldown. Also `Alarm_Count=24`, `Alarm_Worst=3`, `Alarm_Missing=24`: review every applicable alarm in an actual cooldown.
-- **[SOURCE, not Oct 29 corrected]** Ellie’s older live-laptop script contained a local LS455 scaling patch (`tesla_scale` set to `1.0` because instrument reported tesla); the October 29 validation did **not** establish a need to reapply that patch. **Do not run the old `sed -i`** or modify the frozen feature checkout. Verify unit conversion with the magnet/LS455 specialist if a fringe-field readback is implausible.
+- **[SOURCE, not Oct 29 corrected]** Ellie’s older live-laptop script contained a local LS455 scaling patch (`tesla_scale` set to `1.0` because instrument reported tesla); the October 29 validation did **not** establish a need to reapply that patch. **Do not run the old `sed -i`** or modify the checked-out source. Verify unit conversion with the magnet/LS455 specialist if a fringe-field readback is implausible.
 
 ---
 
@@ -268,21 +319,27 @@ Do not launch a second physical Cryo IOC manager because a GUI is blank. Check f
 
 In Terminal 2, first check for an owner:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 screen -ls | grep genesis-hist || true
 sudo ss -ltnp | grep ':5130 ' || true
 ```
 
-If **neither** a `genesis-hist` screen nor another `5130` owner is present, start it from the correct feature worktree [RUN]:
+If **neither** a `genesis-hist` screen nor another `5130` owner is present, start it from the approved worktree [RUN]:
+
+**🟧 SPECIALIST / MANUALLY START TREND HISTORY IOC:**
 
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 screen -dmS genesis-hist \
   env EPICS_CAS_SERVER_PORT=5130 EPICS_PVAS_SERVER_PORT=5230 \
   bash -c 'python -u master_ioc.py -s configs/target_physical/trend_history -i trend_history >> logs/trend_history_live.log 2>&1'
 ```
 
 Verify:
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 screen -ls | grep genesis-hist
@@ -291,6 +348,8 @@ tail -40 logs/trend_history_live.log
 ```
 
 In Panopticon, check the Cryo pressure/flow and fridge/magnet plots: **history traces should fill and update**. For a Phoebus plot/databrowser `.plt` linked from a subsystem screen, use the existing linked plot file; do not invent a PV name or open an older simulation plot. Discover installed plot resources if needed:
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 find gui configs -type f \( -name '*.plt' -o -name '*.bob' \) | grep -Ei 'trend|hist|cryo|fridge|magnet|fitter|pq' | head -60
@@ -317,8 +376,10 @@ Established physical sequence from validated October procedures:
 
 ### 5.2 Read-only network and ownership preflight [CHECK]
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ping -c 1 -W 2 192.168.1.23 || true
 ping -c 1 -W 2 192.168.1.19 || true
 ssh -o ConnectTimeout=5 unhpoltarg@192.168.1.23 'hostname; date -u' || true
@@ -330,9 +391,16 @@ A missing PV when the IOCs are **not yet started** is normal. If a Microwave IOC
 
 ### 5.3 Start and validate [29-OCT RUN]
 
+**🟩 OPERATOR / SUPERVISED MICROWAVE START:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh mw-start
+```
+
+**🟩 OPERATOR / MICROWAVE STATUS & READINESS (READ-ONLY):**
+
+```bash
 ./scripts/genesisctl.sh mw-status
 ./scripts/genesisctl.sh mw-rf-ready
 ```
@@ -354,6 +422,8 @@ cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
 The `RF state=1` status field was not the same as actual RF output. We verified OFF with the **explicit** `RF=0`, `Supervisor RF=0` and readiness results. Never infer RF state from one ambiguous status integer.
 
 Optional independent Microwave GUI (may be unnecessary when navigating through Panopticon):
+
+**🟩 OPERATOR / OPTIONAL DISPLAY LAUNCH:**
 
 ```bash
 ./scripts/start_microwave_phoebus.sh
@@ -377,8 +447,10 @@ The **full ssRF startup** creates the protected fitter, with the current PyNMR p
 
 In Terminal 2 **before launching PyNMR**:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 id -un
 ps -eo user,pid,ppid,lstart,args --cols 340 | grep -Ei \
   '[p]ynmr_main.py|[o]nline_fitter.epics_run|[o]nline_fitter.run|[g]enesis-ssrf-fitter' || true
@@ -398,6 +470,8 @@ ls -l ~/.local/state/genesis/nmr-ipc/events.sock 2>&1 || true
 
 ### 6.3 Start PyNMR in Terminal 3 [29-OCT RUN]
 
+**🟩 OPERATOR / START PYNMR GUI:**
+
 ```bash
 conda activate pynmr
 cd /home/utsav/jlab_pynmr
@@ -411,6 +485,8 @@ Terminal 3 stays open; do **not** start PyNMR through `genesisctl.sh` or from a 
 At this stage, check the GUI and hardware connections; ideally wait to start repeated sweeps until the complete ssRF fitter is online (§7). If acquisition starts before the receiver is ready, log retries/rejected events are possible—**do not** treat them as valid fitted events. The physical FPGA/Q-meter and R&S must be available and tuned per the NMR operator's procedure, not inferred from a graphical waveform.
 
 Read-only cross-check in Terminal 2:
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 ps -eo user,pid,stat,args --cols 300 | grep '[p]ynmr_main.py' || true
@@ -453,8 +529,10 @@ Known safe baseline from Oct 29:
 
 In Terminal 2:
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh ssrf-physical-status
 ssh -o ConnectTimeout=5 unhpoltarg@192.168.1.24 'date -u; lsusb; sudo ss -ltnp | grep -E ":5064|:8778" || true'
 ```
@@ -469,9 +547,16 @@ ssh -o ConnectTimeout=5 unhpoltarg@192.168.1.24 'date -u; lsusb; sudo ss -ltnp |
 
 **Required prerequisite:** PyNMR's **one and only** foreground process is already running (§6). There must be no active standalone fitter or partial ssRF owner. Check current command help/script if the checkout differs from the tag.
 
+**🟩 OPERATOR / CHECK ssRF READ-ONLY STATUS:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh ssrf-physical-status
+```
+
+**🟧 SPECIALIST / AUTHORIZED CLOCK SYNC + ssRF START:** This launcher changes the Raspberry Pi clock/NTP configuration and starts physical device owners. Never use it solely to repair a display or while another owner is active.
+
+```bash
 ./scripts/ssrf-start-auto-clock.sh
 ```
 
@@ -485,6 +570,8 @@ The Oct 29 `ssrf-start-auto-clock.sh` ran clock synchronization and the equivale
 
 Read-only verification:
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
 screen -ls | grep genesis-ssrf || true
 sudo ss -ltnp | grep -E ':(8779|5100)([[:space:]]|$)' || true
@@ -493,6 +580,8 @@ sudo ss -ltnp | grep -E ':(8779|5100)([[:space:]]|$)' || true
 ```
 
 Use Panopticon's ssRF link or the dedicated ssRF GUI, **without starting new IOCs**. Optional display launcher (display only):
+
+**🟩 OPERATOR / OPTIONAL DISPLAY LAUNCH:**
 
 ```bash
 ./scripts/start_ssrf_phoebus.sh
@@ -504,6 +593,8 @@ Use Panopticon's ssRF link or the dedicated ssRF GUI, **without starting new IOC
 
 Start a **short authorized** Deuteron acquisition from the PyNMR GUI only after `genesis-ssrf-fitter` is up. Observe a complete event; inspect the fitter screen or its actual log filename (find first, do not assume one):
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 screen -ls | grep genesis-ssrf-fitter || true
 ps -eo user,pid,args --cols 300 | grep -E '[o]nline_fitter.epics_run|[p]ynmr_main.py' || true
@@ -512,6 +603,8 @@ rg -n 'GENESIS ADMISSION|GENESIS IPC|accepted=|pynmr_commissioning_unverified|ro
 ```
 
 **Positive Oct 29 evidence (shape of log):**
+
+**⬜ REFERENCE / OUTPUT OR PATH (NOT EXECUTABLE):**
 
 ```text
 [GENESIS ADMISSION] adapter accepted=True route={'selected_source':'pynmr', 'route_epoch':2, 'nmr_mask':0, 'nmr_comm':1, 'stream_connected':True, 'post_switch_ready':True, ...}
@@ -528,7 +621,7 @@ A successful TCP connection **alone is not proof of acceptance**. Require the co
 
 ### 7.5 Operator burn mode is NOT authorization to burn
 
-The operator-mode startup leaves `SEQ:EXECUTION_ARMED=0`, `SEQ:PREPARED=0`, RF/FM/WaveGen **OFF**. The GUI supports recipes and operator-gated actions, but **burn execution requires an entirely separate trained operator's hardware readiness and target/RF authorization**. Do **not** click `ARM`, `RF ON`, `BURN ONCE`, continuous burn, manual RF, or enable WaveGen as a troubleshooting step. The October 29 integrated test **did not** physically validate a meaningful Single/Continuous Burn with the target signal. The prior separate ssRF burn-commissioning worktree is not this frozen feature checkout; do not mistake its offline tests for this branch's physical burn acceptance.
+The operator-mode startup leaves `SEQ:EXECUTION_ARMED=0`, `SEQ:PREPARED=0`, RF/FM/WaveGen **OFF**. The GUI supports recipes and operator-gated actions, but **burn execution requires an entirely separate trained operator's hardware readiness and target/RF authorization**. Do **not** click `ARM`, `RF ON`, `BURN ONCE`, continuous burn, manual RF, or enable WaveGen as a troubleshooting step. The October 29 integrated test **did not** physically validate a meaningful Single/Continuous Burn with the target signal. The prior separate ssRF burn-commissioning worktree is not the relevant approved checkout; do not mistake its offline tests for this branch's physical burn acceptance.
 
 If a later approved procedure does use burn features, the critical contractual properties to verify **without bypass** are fit-gated rejection of invalid fit, ungated prepared-burn authorization, one-shot and continuous mode ownership, STOP/ABORT, failed-cleanup inhibit, RF termination and physical interlocks. A fault or unknown cleanup state means **no subsequent RF enable** and a supervised fail-safe stop. Use the established subsystem operator SOP, not an improvised `caput` sequence.
 
@@ -543,17 +636,17 @@ If a later approved procedure does use burn features, the critical contractual p
 | NMR fit says `n/a` or spectra noise | No valid target signal/calibration/tuning | Don't report polarization; confirm raw acquisition/event acceptance; seek NMR expert for physical tuning |
 | `/tmp/genesis-ssrf-physical/lifecycle.lock Permission denied` | Cross-user ACL/ownership or active owner | Inspect lock ownership and live processes; coordinate handoff. **Do not chmod/chown or delete** an active lock; this runbook assumes `utsav` only |
 | Keysight direct USB probe skipped | Keysight IOC already owns device | Expected and safe. Use IOC readbacks; direct read-only USB probe after managed shutdown |
-| Pi Keysight widget magenta | Missing CA address or IOC offline | Check frozen `panopticon_live.ini` contains `192.168.1.24:5064`; inspect Pi IOC status; restart **entire** correctly owned Phoebus GUI only if it loaded an old settings file |
+| Pi Keysight widget magenta | Missing CA address or IOC offline | Check approved `panopticon_live.ini` contains `192.168.1.24:5064`; inspect Pi IOC status; restart **entire** correctly owned Phoebus GUI only if it loaded an old settings file |
 | `Port 8778` already in use | Competing legacy bridge or other app | Identify owner. Do **not** start competing Keysight bridge or force-reset device; authorized owner resolves conflict |
 | Device disconnect after USB fault | Pi xHCI controller/USB enumeration problem | **Do not reboot/reset Pi** during ssRF. Finish safe ssRF stop first; follow Cryo USB diagnostic §3 |
 
 ---
 
-## 8. Magnet supply — optional Ellie/Prof. Long read-only IOC [SOURCE; NOT 29-OCT RUN]
+## 8. Magnet supply — specialist read-only IOC [30-OCT OBSERVED; controlled shutdown]
 
-The Magnet power supply was **OFF/disconnected** in the October 29 validation. All **59 Magnet supply PVs** appeared in the Master Archive registry but were marked **`missing`**. Cryo magnet **thermometry** (LS224/LHe) remained a **separate** Cryo PV group and was recorded.
+The Magnet power supply was **OFF/disconnected** in the October 29 integration validation; the Master Archive recorded **59 missing Magnet supply PVs**. Cryo magnet thermometry remained a separate recorded group. On **October 30**, the operator independently launched the **read-only Magnet IPS120 IOC** from the `visualizer-integration` worktree and later stopped the associated `genesis-magnet` screen while running commands from `main`. The final local screen and TCP-port checks passed. **Those checks verify only software termination; the supplied console does not independently establish the IPS120's physical operating state.**
 
-**Important:** Magnet high-current/persistent-switch control is a specialist procedure. The following is **read-only connection guidance** drawn from the **Ellie/Prof. Long `scripts/live_laptop/start.sh`** and the checked-in `configs/magnet_physical/ips120/settings.yaml`, **not** a physically accepted October 29 startup. **Do not run this section at all unless the magnet operator confirms the supply is energized appropriately, available, not owned by another client, and safe to monitor.** Do not turn on the supply or make it remote merely to fill Panopticon fields.
+**Important:** Magnet current/persistent-switch control is specialist-only. The IOC guidance is adapted from Ellie's source and the checked-in `configs/magnet_physical/ips120/settings.yaml`. **Do not connect or disconnect its monitor unless the Magnet lead confirms the present physical state, single client ownership, and required independent monitoring.** Never energize a supply merely to populate a dashboard.
 
 ### 8.1 Source files and safety settings [CHECK]
 
@@ -564,8 +657,10 @@ The Magnet power supply was **OFF/disconnected** in the October 29 validation. A
 
 In Terminal 2, after confirming Cryo monitors exist:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 grep -nE 'write_enabled:|ip:|port:' configs/magnet_physical/ips120/settings.yaml
 screen -ls | grep genesis-magnet || true
 sudo ss -ltnp | grep ':5131 ' || true
@@ -576,16 +671,20 @@ ping -c 1 -W 2 192.168.1.250 || true
 
 ### 8.2 Read-only start — only with Magnet operator approval [SOURCE]
 
-Ellie's exact launch pattern, adapted to the **actual October 29 worktree/environment**, is:
+Manual read-only launch pattern, from the **currently selected worktree** (tested as an IOC lifecycle on October 30):
+
+**🟧 SPECIALIST / MANUALLY START MAGNET READ-ONLY IOC:**
 
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 screen -dmS genesis-magnet \
   env EPICS_CAS_SERVER_PORT=5131 EPICS_PVAS_SERVER_PORT=5231 \
   bash -c 'python -u master_ioc.py -s configs/magnet_physical/ips120 -i ips120 >> logs/magnet_ips120_live.log 2>&1'
 ```
 
 **Do not run if the `genesis-magnet` screen/`5131`/physical serial port is already owned.** The Magnet physical profile is read-only by default, but a specialist must still verify current branch/configuration and that connecting to this particular instrument will not interfere with active operation. Verify without control writes:
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 screen -ls | grep genesis-magnet || true
@@ -601,7 +700,43 @@ For a connected, safe, read-only session, expect `UNH:GEN:MAG:COMM` to become ac
 
 If the IOC starts but `COMM=0`, or logs show the serial server is already in use, **do not repeatedly restart the IOC**. First verify power/physical availability and single ownership with the magnet lead; inspect `logs/magnet_ips120_live.log`, the network, and known producer sessions. If another client holds port 5001, do not force it off. Leave the Magnet **offline/missing** in the Master Archive, as on Oct 29, until authorized.
 
-A manual `genesis-magnet` IOC has no dedicated validated `genesisctl.sh magnet-stop` in this session. On shutdown, after the magnet lead confirms **no active control/ramp/heater transition and safe release**, close **only the matching `genesis-magnet` screen** and verify exit; if safety cannot be established, **retain the owner and monitoring** and stop the broader shutdown sequence. See §12.
+A manual `genesis-magnet` IOC has **no dedicated verified `genesisctl.sh magnet-stop` command** here. Shutdown is a separately authorized specialist action with explicit front-panel inspection, not a generic software stop. See **§8.4** and **§12.5**. If safe release cannot be established, retain the IOC and independent monitoring.
+
+
+### 8.4 Magnet IOC shutdown / release, including October 30 lesson [SPECIALIST]
+
+**This is a monitoring-service shutdown, not a physical magnet shutdown.** Do not change current setpoints, ramp rates, heater state, persistent-mode state, or power. The IOC's current profile explicitly says `write_enabled: false`; confirm that live configuration before proceeding. The October 30 `caget` check could not run because `caget` was not installed, so missing CLI results were **not** evidence that the magnet was holding.
+
+**Magnet lead's physical release checklist (required):** independently confirm on the IPS120 front panel and laboratory instrumentation (1) supply activity is **HOLD/no active ramp**, (2) no heater switching or transition is active, (3) no unresolved quench, abnormal voltage/current or interlock condition, (4) cryogenic/safety monitoring will continue by an independent approved route, and (5) the operator approves disconnecting the read-only EPICS monitor. If any item cannot be verified, **leave `genesis-magnet` running** and arrange a specialist handoff.
+
+**🟦 EXPERT / IDENTIFY THE EXACT MAGNET IOC AND LOG (READ-ONLY):**
+
+```bash
+screen -ls | grep genesis-magnet || true
+ps -eo user,pid,ppid,lstart,args --cols 300 | grep '[m]aster_ioc.py -s configs/magnet_physical/ips120' || true
+ss -ltnp | grep -E ':(5131|5231)\b' || true
+# Replace ACTUAL_MAGNET_PID only with the live Python PID found above:
+# readlink -f /proc/ACTUAL_MAGNET_PID/cwd
+# tail -50 /proc/ACTUAL_MAGNET_PID/cwd/logs/magnet_ips120_live.log
+```
+
+**🟧 SPECIALIST / STOP THE VERIFIED READ-ONLY MONITOR AFTER PHYSICAL SIGN-OFF:**
+
+```bash
+screen -S genesis-magnet -X quit
+```
+
+**🟦 EXPERT / VERIFY EXIT AND PORT RELEASE (READ-ONLY):**
+
+```bash
+screen -ls | grep genesis-magnet || echo '[PASS] No local Magnet screen'
+ps -eo user,pid,args --cols 300 | grep '[m]aster_ioc.py -s configs/magnet_physical/ips120' || true
+ss -ltnp | grep -E ':(5131|5231)\b' || echo '[PASS] Magnet CA/PVA ports not listening'
+```
+
+The screen may disappear before its Python child releases a socket. If a matching IOC persists, first verify its **current** PID, user, start time and `/proc/<PID>/cwd`; inspect logs and confirm specialist approval before a **targeted graceful SIGTERM**. Never paste an old PID from October 30 (`41853` was historical), use `kill -9`, or kill a different Magnet/LabVIEW owner. Recheck the ports after termination. If the IOC was being used for required monitoring, do not release it even if only two ports remain occupied.
+
+**October 30 specific observation:** a script requiring the literal `MAGNET SAFE` exited with `[STOP] Magnet monitoring retained` because that physical confirmation was not entered; later `screen -S 41847.genesis-magnet -X quit` removed the screen, and `5131/5231` were confirmed free. The final software state was checked, **not** the physical HOLD/heater state. Future operators must not treat those historical commands as blanket clearance.
 
 ---
 ## 9. Unified Master Archiver: start, verify, quality, session files [29-OCT RUN]
@@ -610,8 +745,10 @@ The **Master Archiver** reads PVs across multiple subsystems; it is **not** an I
 
 ### 9.1 Before starting [CHECK]
 
+**🟩 OPERATOR / ROUTINE STATUS OR READINESS (READ-ONLY):**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh master-archive-status
 ./scripts/genesisctl.sh cryo-status
 ./scripts/genesisctl.sh mw-status
@@ -621,6 +758,8 @@ cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
 The latter three status checks may show timeouts for **intentionally stopped** or unavailable subsystems. Do **not** start the Magnet solely to eliminate its missing PVs; the 59 Magnet values should be recorded as missing in an otherwise valid archive. Check disk availability; the 29 October run had approximately **1 TB** free at startup.
 
 ### 9.2 Start recorder [29-OCT RUN]
+
+**🟩 OPERATOR / MASTER ARCHIVER START AND STATUS:**
 
 ```bash
 ./scripts/genesisctl.sh master-archive-start
@@ -650,11 +789,15 @@ The archiver read **Cryo, Microwave and ssRF/NMR** values during live operation.
 
 Base directory:
 
+**⬜ REFERENCE / OUTPUT OR PATH (NOT EXECUTABLE):**
+
 ```text
 /home/utsav/UNH-Genesis-Control/local_data/archive/master/
 ```
 
 **October 29 validated session:**
+
+**⬜ REFERENCE / OUTPUT OR PATH (NOT EXECUTABLE):**
 
 ```text
 /home/utsav/UNH-Genesis-Control/local_data/archive/master/
@@ -670,6 +813,8 @@ A different run creates a **different** timestamped session. Never hard-code the
 
 To locate the newest session **read-only**:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 BASE=/home/utsav/UNH-Genesis-Control/local_data/archive/master
 find "$BASE" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -8
@@ -677,6 +822,8 @@ du -sh "$BASE"/* 2>/dev/null | tail -12
 ```
 
 To view files inside the selected session, replace `<SESSION_NAME>` with the real directory name (type it explicitly):
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 SESSION=/home/utsav/UNH-Genesis-Control/local_data/archive/master/REPLACE_WITH_ACTUAL_SESSION_NAME
@@ -689,12 +836,16 @@ Do not assume the archive stores physical safety truth. If a sensor goes offline
 
 ### 9.4 Periodic quality/coverage check [CHECK]
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
 ./scripts/genesisctl.sh master-archive-status
 ls -lt /home/utsav/UNH-Genesis-Control/local_data/logs/master-archive.log
 ```
 
 The following compact Python diagnostic reads the **latest CSV snapshot from the newest session on the current UTC day**, without writing to the archive. It prints per-prefix freshness and missing counts; it intentionally **does not treat unchanged/stale values as newly verified physical data**. It finds a session by modification time, so double-check the printed directory before interpreting the output:
+
+**🟦 EXPERT / READ-ONLY ANALYSIS OR CONNECTIVITY CHECK:**
 
 ```bash
 python - <<'PY'
@@ -739,7 +890,7 @@ PY
 
 ### 9.5 Archive-source diagnostics and mismatch troubleshooting
 
-- If `configured_pvs` differs from **448** on the exact October 29 commit, inspect `archive/master_sources.yaml` and `session.json` **read-only**, record which source was added/omitted; don't silently repair a frozen checkout during a run.
+- If `configured_pvs` differs from **448** on the Oct 29/30 `4846a4d` baseline, inspect `archive/master_sources.yaml` and `session.json` **read-only**, record which source was added/omitted; don't silently repair a frozen checkout during a run.
 - If `snapshots` remains zero after initial startup, inspect recorder process/PID, CA address list and `/home/utsav/UNH-Genesis-Control/local_data/logs/master-archive.log`. Verify no second owner.
 - If events are zero but snapshots rise, PV monitors may all be unreachable. Check active Cryo/MW/ssRF IOC states and CA address configuration. **Do not** start all hardware just to satisfy event counts.
 - If one subsystem records stale/missing, examine `|quality`, `|age_s` and **instrument** `COMM` first; distinguish a display/EPICS connection fault from a dead physical serial device.
@@ -754,14 +905,22 @@ The viewer is a **read-only** browser of Master and subsystem archive files. It 
 
 In Terminal 5:
 
+**🟦 EXPERT / CHECK STREAMLIT PORT OWNERSHIP (IF NEEDED):**
+
 ```bash
-conda activate genesis-p1
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
 ss -ltnp | grep ':8501 ' || true
+```
+
+**🟩 OPERATOR / START VIEWER (IN FOREGROUND):**
+
+```bash
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh archive-viewer
 ```
 
 Then use the WSL/Windows browser (on the same host) at:
+
+**⬜ REFERENCE / OUTPUT OR PATH (NOT EXECUTABLE):**
 
 ```text
 http://localhost:8501
@@ -788,10 +947,12 @@ Use this section when an operator sees a magenta PV, blank trend, stale value, m
 
 ### 11.1 Universal read-only inventory [CHECK]
 
-In Terminal 2, on the exact feature worktree:
+In Terminal 2, from `$GENESIS_WT`:
+
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
 
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 printf 'User=%s  branch=%s  SHA=%s\n' "$(id -un)" "$(git branch --show-current)" "$(git rev-parse --short HEAD)"
 screen -ls
 ps -eo user,pid,ppid,lstart,args --cols 340 | grep -Ei \
@@ -802,6 +963,8 @@ sudo ss -ltnp
 ```
 
 To inspect an **identified** PID, set the variable to the actual current PID first (the example `12345` is **not** an identified running process; change it):
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 PID=12345  # REPLACE with the actual current PID from ss/ps
@@ -841,8 +1004,10 @@ If `ps` returns nothing, the process may have exited; **do not** reuse an old PI
 
 ### 11.3 Finding the real log and process, not guessing filenames
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 find logs -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null | sort | tail -45
 find /home/utsav/UNH-Genesis-Control/local_data/logs -maxdepth 1 -type f -printf '%p\n' 2>/dev/null | sort | tail -35
 ls -lt logs/*fitter* logs/*trend* logs/*ssrf* 2>/dev/null | head -30
@@ -862,7 +1027,7 @@ ls -lt logs/*fitter* logs/*trend* logs/*ssrf* 2>/dev/null | head -30
 3. Identify its owner and intended role. If it is already the correct running service, **reuse it**; do not start a duplicate. If owned by another person/account, **stop** and arrange a safe handoff.
 4. If it is a **previous partially started ssRF/Microwave/Cryo stack under your own account**, verify physical safe state and use its **matching managed safe-stop command**, then recheck listener/screens/PVs. A single partial `screen` is not grounds for a blanket kill.
 5. If the service remains after its managed stop, **record logs and stop**; investigate the program-specific shutdown. Do not escalate to `kill -9`, `fuser -k`, `pkill -f python`, `screen -wipe`, mass process kill, raw USB reset, or deleting locks without a separate senior-operator recovery procedure.
-6. For SSH failures, validate route and credentials (`ssh -o ConnectTimeout=5 ...`), avoid exposing private keys/passwords, and do not bypass host-key warnings. The Keysight Pi may use a dedicated SSH identity on the `utsav` account; the October 21 cross-account incident required correcting direct-IP key config **for another account**. No account changes are needed for this frozen run.
+6. For SSH failures, validate route and credentials (`ssh -o ConnectTimeout=5 ...`), avoid exposing private keys/passwords, and do not bypass host-key warnings. The Keysight Pi may use a dedicated SSH identity on the `utsav` account; the October 21 cross-account incident required correcting direct-IP key config **for another account**. No account changes are implied by this procedure.
 
 ---
 ## 12. Controlled shutdown — one subsystem at a time, Panopticon LAST [29-OCT RUN]
@@ -875,6 +1040,8 @@ ls -lt logs/*fitter* logs/*trend* logs/*ssrf* 2>/dev/null | head -30
 
 In Terminal 5, exit the Streamlit foreground process with `Ctrl+C`. Closing its browser tab alone may leave its server running. Check that its owned `8501` listener has exited; **do not kill somebody else's Streamlit process**.
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 ss -ltnp | grep ':8501 ' || echo '[INFO] No Streamlit listener on 8501'
 ```
@@ -885,14 +1052,18 @@ Master Archiver must continue running at this stage.
 
 **Before** stop, confirm no authorized burn or RF activity is in progress; notify the ssRF operator. Read-only:
 
+**🟩 OPERATOR / ROUTINE STATUS OR READINESS (READ-ONLY):**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 ./scripts/genesisctl.sh ssrf-physical-status
 ```
 
 On Oct 29: SMC RF **False**, FM **False**, power `−120 dBm`; NMR mask `0`; RF mask `3`. The pre-stop script **did not directly probe Keysight USB** because the Pi IOC owned it. **Do not assume WaveGen OFF from the skipped probe**; managed stop will verify the post-release baseline. If burn active or output state unknown, use the approved controller **ABORT** under operator supervision, not a Unix kill.
 
 Perform the supported managed stop:
+
+**🟩 OPERATOR / SAFETY-GUARDED SSRF STOP:**
 
 ```bash
 ./scripts/genesisctl.sh ssrf-stop
@@ -903,6 +1074,8 @@ Perform the supported managed stop:
 **STOP condition:** any unsafe SMC RF/FM, WaveGen ON, wrong RF switch, or verification failure. Keep operator engaged; do not remove RF hardware/USB, terminate owner by force, or proceed to leave unattended.
 
 Post-stop check (read-only):
+
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
 
 ```bash
 screen -ls | grep genesis-ssrf || echo '[PASS] No ssRF screen sessions'
@@ -915,6 +1088,8 @@ In Terminal 3, if sweeps are active, use the **PyNMR GUI's normal Stop** and all
 
 Read-only check from Terminal 2:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 ps -eo user,pid,stat,args --cols 300 | grep '[p]ynmr_main.py' || true
 ss -ltnp | grep ':8779 ' || echo '[PASS] No protected NMR TCP receiver'
@@ -926,6 +1101,8 @@ Oct 29: prior PyNMR PID `14103` exited; no remaining `pynmr_main.py`, port `8779
 
 While the hardware remains connected and powered, verify:
 
+**🟩 OPERATOR / ROUTINE STATUS OR READINESS (READ-ONLY):**
+
 ```bash
 ./scripts/genesisctl.sh mw-status
 ./scripts/genesisctl.sh mw-rf-ready
@@ -934,6 +1111,8 @@ While the hardware remains connected and powered, verify:
 **Required safe readbacks:** `RF=0`, `Supervisor RF=0`, robot `CONTROL_MODE=0`, X busy/Y busy `0`, UCA ≈5 V. `mw-rf-ready` is read-only; its manual testing instructions are **not** authorization to transmit. If safe state fails, **do not** unplug USB or turn off the VDI/ UCA just to bypass the test—get the Microwave lead.
 
 Then:
+
+**🟩 OPERATOR / SAFETY-GUARDED MICROWAVE STOP:**
 
 ```bash
 ./scripts/genesisctl.sh mw-stop
@@ -950,25 +1129,74 @@ Oct 29 managed stop explicitly set/read back Supervisor RF disable, source RF OF
 
 The Oct 29 operator confirmed unplugging cables and turning off VDI. The subsequent `mw-status` printed EPICS **timeouts for every PV**, which are **expected because the IOCs were stopped** and are **not a failure**. Verify session/process absence, not nonexistent PVs:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 screen -ls | grep -E 'mw_|ioc-manager|archiver' || echo '[INFO] No Microwave screen sessions shown'
 ```
 
 **Important:** ensure the physical UCA power supply is also OFF; its final off state was a separate operator checklist item.
 
-### 12.5 Optional Magnet — SPECIALIST CONTROLLED RELEASE [SOURCE, not Oct 29]
 
-If no `genesis-magnet` IOC was launched, **skip**. If the Magnet supply is connected, the magnet lead must confirm no ramp, heater transition, quench response, or other operation requiring software control/monitoring, and an independently safe configuration. **Never turn off a magnet supply solely to close the dashboard**, and never use a generic shutdown script to force out its serial owner.
+### 12.4.1 Independent Microwave Siglent scope IOC [30-OCT OBSERVED]
 
-With **explicit specialist approval to release the read-only IOC**, identify the session and then stop **only** that validated session:
+The new Siglent scope IOC may be launched separately from the Microwave control stack, potentially from a **different worktree**. The October 30 `mw-stop`/Microwave session cleanup left `mw_siglent_sds814x` running from `visualizer-integration`. This is **read-only scope monitoring**, not an RF safety controller, but confirm no necessary measurement/monitoring is being interrupted.
+
+**🟦 EXPERT / IDENTIFY SCOPE OWNER AND PORTS:**
 
 ```bash
-screen -ls | grep genesis-magnet || true
-screen -S genesis-magnet -X quit
-screen -ls | grep genesis-magnet || echo '[PASS] Magnet read-only IOC session ended'
+screen -ls | grep mw_siglent_sds814x || true
+ps -eo user,pid,ppid,lstart,args --cols 300 | grep '[m]aster_ioc.py -s configs/commissioning/microwave_physical/siglent_sds814x' || true
+ss -ltnp | grep -E ':(5095|5096)\b' || true
 ```
 
-This session-close command is drawn from the manual `genesis-magnet` launch pattern; **it was not exercised Oct 29**. If the magnet remains physically active or the IOC has write permission, **STOP and use the Magnet team's dedicated shutdown/SOP** rather than the example above.
+**🟧 SPECIALIST / CLOSE ONLY THE VERIFIED SCOPE SCREEN (AFTER MEASUREMENT HANDOFF):**
+
+```bash
+screen -S mw_siglent_sds814x -X quit
+```
+
+**🟦 EXPERT / CONFIRM THE PYTHON PROCESS AND SOCKETS HAVE ALSO EXITED:**
+
+```bash
+screen -ls | grep mw_siglent_sds814x || echo '[PASS] No local scope screen'
+ps -eo user,pid,args --cols 300 | grep '[m]aster_ioc.py -s configs/commissioning/microwave_physical/siglent_sds814x' || true
+ss -ltnp | grep -E ':(5095|5096)\b' || echo '[PASS] Scope IOC CA/PVA ports not listening'
+```
+
+**October 30 lesson:** immediately after the screen was closed, Python PID `39803` still appeared on `5095/5096`; a later check found it had exited. Do not mistake screen disappearance for port release, and do not reuse historical PIDs. If the *same identified child* persists, escalate to the subsystem owner for a targeted graceful termination, not blanket process killing.
+
+### 12.5 Magnet IOC: specialist-controlled monitoring release [30-OCT OBSERVED]
+
+**Never confuse release of a read-only IOC with safe ramp-down, heater transition, or powering off the magnet.** The IPS120 power system can remain energized while a monitor is stopped. A software stop is allowed **only after** the responsible Magnet operator independently confirms the supply is holding (not ramping), no switch-heater transition/abnormal alarm is active, and independent field/current/cryogenic safety monitoring remains in place. The current config is `write_enabled: false`; confirm that in the active worktree. If an operation is active or the state is unverified, **retain the Magnet IOC** and follow the Magnet specialist SOP; do not use the steps below.
+
+**🟦 EXPERT / READ-ONLY MAGNET IDENTITY, LOG, AND PORT CHECK:**
+
+```bash
+cd "$GENESIS_WT"
+grep -n 'write_enabled:' configs/magnet_physical/ips120/settings.yaml
+screen -ls | grep genesis-magnet || true
+ps -eo user,pid,ppid,stat,args --cols 300 | grep '[m]aster_ioc.py -s configs/magnet_physical/ips120' || true
+ss -ltnp | grep -E ':(5131|5231)\b' || true
+```
+
+For a manual `genesis-magnet` screen, identify its actual process working directory with `readlink -f /proc/<CURRENT_PID>/cwd`, then inspect **that worktree's** `logs/magnet_ips120_live.log` (do not guess that `main/logs/` contains it). The Oct 30 Magnet IOC ran from `visualizer-integration` while subsequent commands ran from `main`. If `caget` is absent, do not infer safe state; independent front-panel confirmation remains required.
+
+**🟧 SPECIALIST / RELEASE ONLY THE APPROVED READ-ONLY MAGNET IOC:**
+
+```bash
+screen -S genesis-magnet -X quit
+```
+
+**🟦 EXPERT / VERIFY MAGNET IOC EXIT:**
+
+```bash
+screen -ls | grep genesis-magnet || echo '[PASS] Magnet screen exited'
+ps -eo user,pid,args --cols 300 | grep '[m]aster_ioc.py -s configs/magnet_physical/ips120' || true
+ss -ltnp | grep -E ':(5131|5231)\b' || echo '[PASS] Magnet IOC ports released'
+```
+
+If the screen exits but the child process survives, do **not** infer completion. Verify PID/user/start time/exact command and owner, check the physical release authorization again, and escalate for a **targeted SIGTERM** if explicitly approved. Never use `kill -9`, generic `pkill`, `fuser -k`, or remove locks. The October 30 screen and port release is a **software observation only**; no physical Magnet control acceptance is implied. See §8.4 for the complete checklist.
 
 ### 12.6 Cryo: coldboard check, clean archive stop, 19 IOCs and Pi bridges [29-OCT RUN]
 
@@ -976,12 +1204,16 @@ Confirm first: **cryostat warm/idle or independently monitored**, no critical op
 
 Read-only status:
 
+**🟩 OPERATOR / ROUTINE STATUS OR READINESS (READ-ONLY):**
+
 ```bash
 ./scripts/genesisctl.sh cryo-status
 ./scripts/genesisctl.sh master-archive-status
 ```
 
 Then run the guarded stop **only after the conditions above are met**:
+
+**🟩 OPERATOR / SAFETY-GUARDED CRYO STOP:**
 
 ```bash
 ./scripts/genesisctl.sh cryo-stop
@@ -993,6 +1225,8 @@ Then run the guarded stop **only after the conditions above are met**:
 
 Verify session count:
 
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+
 ```bash
 screen -ls | grep genesis-cryo || echo '[PASS] No Cryo screen sessions'
 ```
@@ -1002,6 +1236,8 @@ Do not power off the shared Pi: it is the host for Keysight and Cryo bridges. Th
 ### 12.7 Trend History IOC: stop after Cryo [29-OCT RUN]
 
 This was launched as detached `genesis-hist` manually, so it did not have a `genesisctl.sh` stop in the Oct 29 procedure. Verify owner and close **only the exact session**:
+
+**🟧 SPECIALIST / CONDITIONAL MANAGED MONITOR RELEASE:**
 
 ```bash
 screen -ls | grep genesis-hist || true
@@ -1015,11 +1251,15 @@ Do not use `screen -X quit` with an unverified global session pattern. If `genes
 
 **Leave Master Archiver running until after the subsystem stop sequence** so it records the availability transitions. Do not close it with a process kill. First capture last running status:
 
+**🟩 OPERATOR / ROUTINE STATUS OR READINESS (READ-ONLY):**
+
 ```bash
 ./scripts/genesisctl.sh master-archive-status
 ```
 
 Then request graceful finalization:
+
+**🟩 OPERATOR / STOP MASTER ARCHIVER:**
 
 ```bash
 ./scripts/genesisctl.sh master-archive-stop
@@ -1028,6 +1268,8 @@ Then request graceful finalization:
 
 **Important October 29 behavior:** the first status immediately after `master-archive-stop` still said `[UP]` and `finished=false`; the stop printed `[STOP REQUESTED]`. A later read-only check showed `[DOWN]`, and the original PID no longer existed. This is **not** evidence that stop failed; it was asynchronous cleanup. **Do not call `kill`, delete the lock file, or repeat stop immediately.** Recheck after the process has had time to finish:
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
 ./scripts/genesisctl.sh master-archive-status
 ps -eo user,pid,stat,args --cols 300 | grep '[a]rchive.master_service' || true
@@ -1035,6 +1277,8 @@ tail -30 /home/utsav/UNH-Genesis-Control/local_data/logs/master-archive.log
 ```
 
 After `[DOWN]`, inspect the actual session directory selected from §9.3:
+
+**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
 
 ```bash
 BASE=/home/utsav/UNH-Genesis-Control/local_data/archive/master
@@ -1049,6 +1293,8 @@ After the Master Archiver reports `[DOWN]`, and after all critical monitoring ha
 
 Verify:
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
 ps -eo user,pid,stat,args --cols 340 | grep -Ei \
   '[p]hoebus|[g]enesis_panopticon.bob|[p]roduct-4.7.4-SNAPSHOT.jar' || true
@@ -1057,6 +1303,8 @@ screen -ls
 ```
 
 On Oct 29 the Java GUI remained as PID **19501** after closing window(s), so the operator sent a **normal TERM signal to that exact verified own-account GUI process**. The immediate `ps` still showed it; a repeat after a few seconds showed it gone. **Do not reuse PID 19501.** If and only if **your own Panopticon** is the remaining exact process, you may use the same **guarded, PID-specific graceful** fallback (no `kill -9`):
+
+**🟧 SPECIALIST / IDENTIFIED OWNED-PROCESS GRACEFUL FALLBACK:**
 
 ```bash
 # Replace 12345 with the ACTUAL PID observed in the current ps output.
@@ -1076,42 +1324,104 @@ This does **not** operate on other Phoebus or Python processes. If it stays aliv
 
 ### 12.10 Final platform and archive check
 
+**🟩 OPERATOR / ROUTINE STATUS + 🟦 EXPERT / OWNERSHIP DIAGNOSTICS (READ-ONLY):**
+
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 printf 'Branch: '; git branch --show-current
 printf 'SHA: '; git rev-parse HEAD
 git status --short
 screen -ls
 ps -eo user,pid,args --cols 300 | grep -Ei \
-  '[p]ynmr_main.py|[g]enesis_panopticon.bob|[o]nline_fitter.epics_run' || true
+  '[p]ynmr_main.py|[g]enesis_panopticon.bob|[o]nline_fitter.epics_run|[m]aster_ioc.py|[i]oc_manager.py' || true
+ss -ltnp | grep -E ':(5095|5096|5131|5231|5130|5230|5100|8779)\b' || true
 ./scripts/genesisctl.sh master-archive-status
 find /home/utsav/UNH-Genesis-Control/local_data/archive/master \
   -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | head -4
 ```
 
-**Expected Oct 29:** all controlled services had exited, no `screen` sockets remained, no Phoebus process, Master `[DOWN]`, and Git branch still `feature/visualizer-integration` with clean status. **Do not mistake this for proof that all independent Windows, remote Pi, cryostat or Magnet devices are physically powered off**; verify those under their own SOPs.
+**Expected after a complete shutdown:** no local Genesis `screen` sockets, no residual Panopticon Java process, no unapproved IOC listeners, and Master `[DOWN]`. As observed on October 30, Siglent and Magnet may have **independently launched IOCs** beyond the normal Microwave/Cryo/ssRF stop scripts. Confirm both screen and Python child exit and relevant ports are free. The Git branch may legitimately be `main` or another approved worktree. **No software port/status check proves that Windows, remote Pi, cryostat, Magnet or RF equipment is physically powered off.**
+
+
+### 12.11 Network interruption during ssRF/Microwave shutdown [30-OCT OBSERVED]
+
+During October 30 shutdown, `ssrf-stop` refused at `cleanup_verify_sweep_disarmed` and `mw-stop` refused because its UCA `COMM=0` or other fresh-readback verification did not pass. Both **retained physical owners as designed**. The failure was not caused by running `main` instead of `visualizer-integration`: both pointed to `4846a4d`. The Ubuntu `eth0` route recovered, but distinct devices became reachable at different times: SMC `192.168.1.16:5025`, UCA `192.168.1.19:5025`, Vaunix Pi `.23`, Keysight Pi `.24` and Mini-Circuits switches `.8/.11`. Before recovery, logs reported `Network is unreachable`, `osiLocalAddr(): only loopback found`, stale UCA readings, and switch GET timeouts. **No Git modification, broad kill, Pi reboot, lock deletion, or port-force should be the first response.**
+
+1. **🟧 SPECIALIST PHYSICAL CHECK:** At the apparatus, independently verify ssRF RF/FM/WaveGen OFF, sweep/burn stopped, the NMR and RF switch safe routes, Microwave RF OFF, robot idle and UCA in its prescribed shutdown baseline. If these are unknown, the correct decision is to retain owners and escalate.
+2. **🟦 EXPERT NETWORK CHECK:** Differentiate loss of Internet/WAN from loss of the **local lab LAN**. `ip neigh FAILED` can be transient; a subsequent device-specific readback is more useful than assuming the state. Do not use ping alone as RF safety evidence.
+
+**🟦 EXPERT / NETWORK, TCP AND CURRENT OWNER DIAGNOSTICS (READ-ONLY):**
+
+```bash
+ip -br addr show eth0
+ip route get 192.168.1.24
+for ip in 192.168.1.16 192.168.1.19 192.168.1.8 192.168.1.11 192.168.1.23 192.168.1.24; do
+  echo "===== $ip ====="; ip neigh show "$ip"; ping -c 1 -W 1 "$ip" || true
+done
+python - <<'PYTCP'
+import socket
+for name, host, port in [
+    ('SMC', '192.168.1.16', 5025),
+    ('UCA', '192.168.1.19', 5025),
+    ('Vaunix Pi SSH', '192.168.1.23', 22),
+    ('Keysight Pi SSH', '192.168.1.24', 22),
+]:
+    try:
+        with socket.create_connection((host, port), timeout=3):
+            print('[REACHABLE]', name, host, port)
+    except OSError as exc:
+        print('[UNREACHABLE]', name, host, port, exc)
+PYTCP
+screen -ls
+ss -ltnp | grep -E ':(5068|5071|5072|5073|5074|5090|5092|5100|8778|8779)\b' || true
+```
+
+3. **🟩 OPERATOR / RE-RUN FRESH STATUS AFTER NETWORK RECOVERY:** A TCP connection alone does not prove physical safety. The current SMC, switch and WaveGen states must be read, and Microwave `RF valid`/UCA `COMM` checked anew. In the October 30 record the SMC later reported `RF=False`, `FM=False`, `−120 dBm`, while the initial switch HTTP request timed out. A later `/MN?` request responded with device model text prefixed `-99 unknown command`; that showed network response, **not safe switch routing**.
+
+**🟩 OPERATOR / REPEAT NORMAL SAFETY-VERIFIED STOP ONLY WHEN ALLOWED:**
+
+```bash
+cd "$GENESIS_WT"
+./scripts/genesisctl.sh ssrf-physical-status
+./scripts/genesisctl.sh mw-status
+```
+
+After independent safe-readback and switch-route verification, **in this order** and one command at a time:
+
+**🟩 OPERATOR / PROTECTED ssRF STOP:**
+
+```bash
+./scripts/genesisctl.sh ssrf-stop
+```
+
+**🟩 OPERATOR / PROTECTED MICROWAVE STOP:**
+
+```bash
+./scripts/genesisctl.sh mw-stop
+```
+
+4. **🟦 EXPERT FINAL VERIFICATION:** Confirm no remaining screen/IOC owner for the stopped systems, no relevant listeners, Master Archiver state as intended, and physical equipment state independently. If either guarded stop still fails, **do not** use a generalized force-stop. Preserve its owner for a specialist recovery and document the actual failed verification. A request to release ports is not authorization to bypass physical checks.
 
 ---
 
 ## 13. Operator shift checklist (print or complete in Markdown)
 
 **Shift date:** ______  **Operator:** ______  **Responsible cryo/RF/magnet leads:** ______  **Experiment / target state:** ______
-
 **Branch/SHA:** ______  **Run notes/log location:** ______
 
 ### Before operation
 
 - [ ] Current experiment authorization and independent safety monitoring confirmed.
-- [ ] Ubuntu user `utsav`; expected feature worktree, SHA/tag checked; **no switch/merge/pull/push to main**.
+- [ ] Ubuntu user `utsav`; selected approved worktree (`main` by default), SHA and historical validation tag recorded; **no Git changes during live hardware operation**.
 - [ ] All prior device/port owners identified; no uncontrolled duplicate PyNMR, fitter, Pi bridge or IOC.
 - [ ] Pi `192.168.1.24` Keysight and Cryo cables inspected; USB serial devices listed, missing devices recorded.
 - [ ] Pi `192.168.1.23` Microwave Vaunix/green-box USB and UCA/VDI physical readiness checked.
 - [ ] Keysight/SMC/ssRF NMR/RF switches and terminations verified **safe**; output OFF.
-- [ ] Magnet explicitly classified: **offline** OR specialist-authorized **read-only**, not assumed.
+- [ ] Magnet explicitly classified: **offline** OR specialist-authorized **read-only**; current ramp/heater state and independent monitoring handoff documented.
 
 ### Startup and live acceptance
 
-- [ ] Panopticon opened with frozen `panopticon_live.ini`; linked displays work.
+- [ ] Panopticon opened with approved `panopticon_live.ini`; linked displays work.
 - [ ] Cryo 19/19 sessions assessed, archiver running, alarm/safety state recorded; no unsafe activity bypassed.
 - [ ] Trend History `genesis-hist`/5130 live and Panopticon history plots populate.
 - [ ] Microwave supervised startup completed; UCA/VDI/USB correct, RF OFF, robot disabled, relevant archiver active.
@@ -1122,7 +1432,7 @@ find /home/utsav/UNH-Genesis-Control/local_data/archive/master \
 - [ ] Optional Magnet read-only IOC connected **only** with specialist approval, otherwise archived as missing.
 - [ ] Master Archiver 448 configured PVs (for frozen release); snapshots/events increasing, dropped/overrun recorded.
 - [ ] Streamlit viewer shows **current** session and PV quality; Cryo/MW/ssRF plot samples inspected.
-- [ ] Known issues logged: USB low manometer, field/coldboard, SIG scope, fit, Magnet, alarms, Pi clock/NTP.
+- [ ] Known issues logged: USB low manometer, field/coldboard, SIG scope, fit, Magnet, alarms, Pi clock/NTP and any recovered LAN/EPICS readback failures.
 
 ### Shutdown and transfer
 
@@ -1130,21 +1440,19 @@ find /home/utsav/UNH-Genesis-Control/local_data/archive/master \
 - [ ] ssRF safe stop completed; independent Keysight readback output OFF, 10 ms; SMC OFF, RF switch disconnected.
 - [ ] PyNMR acquisition stopped normally; GUI/process and TCP receiver ended.
 - [ ] Microwave safe stop passed, THEN physical USB disconnected, VDI OFF, UCA OFF.
-- [ ] Optional Magnet specialist-authorized ownership released or explicitly handed off with monitoring retained.
+- [ ] Optional Magnet physical HOLD/no-ramp/heater state and independent monitoring **confirmed by Magnet lead**; read-only IOC released only when approved, or explicitly handed off with monitoring retained.
 - [ ] Cryo coldboard read **OFF** and independent safety monitoring confirmed; 19 IOCs/bridges stopped cleanly.
 - [ ] Trend History `genesis-hist` stopped.
 - [ ] Master Archive stop requested; later confirmed `[DOWN]`, files preserved and readable.
-- [ ] Panopticon closed **LAST**, no stale Java process, no leftover local Genesis `screen` sessions.
+- [ ] Independent Siglent scope IOC stopped after approved measurement handoff; screens **and child processes** exited; ports `5095/5096` released.
+- [ ] Magnet IOC `5131/5231` released **only if** specialist sign-off permits monitoring shutdown.
+- [ ] Panopticon closed **LAST**, no stale Java process, no unaccounted local Genesis `screen` sessions or listeners.
 - [ ] New archive session path, final observed counters and deviations documented; **no experimental files deleted**.
 
 **Archive session:** ______________________________
-
 **Last snapshot/event counters:** __________________
-
 **Events dropped / overruns:** _____________________
-
 **Unresolved faults and equipment still energized:** ____________________________________________
-
 **Operator handoff / sign-off:** ____________________
 
 ---
@@ -1173,7 +1481,7 @@ find /home/utsav/UNH-Genesis-Control/local_data/archive/master \
 | `docs/nmr_dual_source_commissioning.md` | Historical protected NMR route/IPC; **not** permission to use LabVIEW source |
 | `docs/ssrf_pynmr_session_2026_10_16.md` | PyNMR/fitter predecessor validation |
 
-All file paths above are relative to the feature worktree unless explicitly absolute. Some historical files may be reorganized later; do **not** substitute a newer branch/source without a release review. Find files with `git ls-files` if necessary.
+All relative file paths refer to **`$GENESIS_WT`**, the current approved worktree, not an assumed feature checkout. A different source SHA requires release review. Discover file paths with `git ls-files` if needed; do not silently substitute old runtime logs from another worktree.
 
 ### 14.2 What was **not** physically validated on October 29
 
@@ -1184,27 +1492,28 @@ All file paths above are relative to the feature worktree unless explicitly abso
 - Scientifically valid target polarization from connected target stick; the tested spectra were noise/invalid polarization.
 - All cryogenic safety interlocks as safety-certified controls; several faults and alarm statuses were present.
 - Restore of Pi NTP after the auto-clock startup (check with Pi maintainer during post-run maintenance).
-- Production multi-user (`sliferlab`) ownership handoff for this exact feature worktree.
+- Production multi-user (`sliferlab`) ownership handoff for this exact working tree.
 
 These are explicit **open items**, not reasons to bypass safeguards. Do not claim full-system operational acceptance merely because Panopticon or an archiver works.
 
-### 14.3 How to put this Markdown file into Git WITHOUT touching main
+### 14.3 Maintaining this runbook in `main` or another approved worktree
 
-This downloaded file is a **separate document**, not automatically part of the frozen commit/tag. Only a repository maintainer on Ubuntu as `utsav` should copy it into the intended feature worktree, review and **separately commit it**, creating a **new** feature-branch SHA. The previous validation tag continues to identify the original October 29 source version. **Do not rewrite, move or force-update the accepted tag**. Never `git checkout main`, merge, rebase, pull, push or modify other worktrees as part of deploying this documentation.
+This document may be maintained on the **current `main` worktree** or another specifically approved development worktree. Editing it is a **documentation task** and should take place with Genesis hardware safely stopped. Do **not** change hardware control code, merge branches or force-push as part of deploying this Markdown file. Preserve the immutable historical October 29 validation tag and distinguish subsequent documentation-only commits from physically accepted tests.
 
-For the maintainer (not a day-to-day operator), first verify:
+**🟦 EXPERT / REVIEW CURRENT WORKTREE BEFORE DOC UPDATE (READ-ONLY):**
 
 ```bash
-cd /home/utsav/UNH-Genesis-Control/worktrees/visualizer-integration
+cd "$GENESIS_WT"
 test "$(id -un)" = 'utsav' || exit 1
-test "$(git branch --show-current)" = 'feature/visualizer-integration' || exit 1
+printf 'Branch=%s SHA=%s\n' "$(git branch --show-current)" "$(git rev-parse --short HEAD)"
 git status --short
+git diff -- docs/operations/GENESIS_PANOPTICON_OPERATOR_RUNBOOK.md
 ```
 
-Place the downloaded `.md` at `docs/operations/GENESIS_PANOPTICON_OPERATOR_RUNBOOK.md` **only after reviewing the whole file**. If you commit the doc later, stage **only the new document**; the feature branch will advance, while the October 29 validation SHA/tag remains unchanged. A technician following the *exact* frozen code can read a later documentation commit without switching branches, but the release provenance must not be misrepresented as newly hardware-tested.
+After copying/reviewing the new Markdown, inspect `git diff --check` and the document-specific diff. A **separate, explicitly authorized Git commit/push** can publish the documentation later; it is not part of normal instrument operations. Do not move the October 29 tag or claim that a docs-only commit constitutes a new RF/Magnet hardware validation.
 
-### 14.4 Provenance and known limits of this runbook
+### 14.4 Provenance, October 30 update and known limits
 
-This runbook was assembled from the October 29 interactive startup/diagnostic/shutdown transcript, its uploaded console logs, the October 26/29 `docs/PANOPTICON_UBUNTU_HANDOFF.md` text, earlier operator cheatsheet (October 22), and actual excerpts of Ellie/Prof. Long's `scripts/live_laptop/start.sh`, `scripts/live_laptop/stop.sh`, Magnet settings and PyNMR source logs. The private Ubuntu/WSL repository, its entire contents and the hardware **could not be opened or tested from the document-authoring environment**. Therefore each `[SOURCE]` example should be checked against the target feature worktree before authorizing hardware. No live Git branch or running service was changed by authoring this file.
+The original runbook was compiled from the October 29 startup/diagnostic/shutdown transcript, October 26/29 handoff notes, operator cheatsheet, and selected Ellie/Prof. Long startup-script, Magnet and PyNMR excerpts. This edition additionally incorporates the **October 30** user-supplied Git promotion and successful `main` run report, network-loss/failed-safe-stop console output, read-only status checks, manual Magnet/Siglent screen release, and final local port/screen/archiver verification. The October 30 output **does not independently show physical Magnet HOLD/heater verification, all hardware RF-safe readbacks at final exit, or a new complete burn acceptance**. No hardware was operated or Git branch changed by authoring this Markdown. Source-derived commands and profiles should be rechecked in the actual live worktree before use.
 
-**Operator principle:** When in doubt, prefer a read-only `status`, the exact process/port/connection inspection, and a responsible human hardware check over restarting, deleting locks, changing clock/USB, forcing process termination, or enabling an unsafe control. A visible GUI is not proof of physical readiness.
+**Operator principle:** Prefer guarded `genesisctl` status/start/stop, exact identity/port/log diagnostics, fresh physical device readbacks and a responsible human check over deletion of locks, clock/USB resets, force-killing owners, or unsafe RF/Magnet control. A clear port and a visible GUI are neither physical safety evidence nor hardware acceptance.
