@@ -1,6 +1,6 @@
 # GENESIS Phase-I — Panopticon Live Operator Runbook
 
-**Current operator baseline (30 October 2026):** `main` and `feature/visualizer-integration` both at `4846a4d6bae0a99a4556709e4428ea38c506bb1c` after verified fast-forward and GitHub push. The operator subsequently reported a successful run from `main`.
+**Current operator baseline (30 October 2026):** `main` was advanced to `4846a4d6bae0a99a4556709e4428ea38c506bb1c` (the same software as `feature/visualizer-integration`) and successfully operated from `main`. A subsequent **documentation-only** update advanced `main` to `fd67507` while `feature/visualizer-integration` remains at `4846a4d`. The tracked operating software was unchanged by that documentation commit.
 **Repository:** `UNH-Genesis-Control`
 **Working directory:** Any **explicitly approved Genesis worktree**. Recommended default: `/home/utsav/UNH-Genesis-Control/worktrees/main`. The runbook uses `$GENESIS_WT` instead of hard-coding a working tree.
 **Historical physical integration basis:** 29 October 2026, source commit `fa3262e7a5c0117102beac216024e4e652606676`; immutable partial-validation tag `panopticon-integration-partial-validated-20261029T173322Z`. The subsequent `4846a4d` commit adds operator documentation; **the historical tag is not moved**.
@@ -19,7 +19,7 @@
 |---|---|---|
 | **🟩 OPERATOR / RUN, STOP, STATUS** | Authorized trained operator | Actual routine startup, shutdown, GUI launch or normal `./scripts/genesisctl.sh ...` status/readiness command |
 | **🟦 EXPERT / DIAGNOSTIC** | Troubleshooter | Read-only process, log, port, socket, Git, network, EPICS or archive investigation. **Not an operational start/stop step.** |
-| **🟧 SPECIALIST / CONTROLLED SERVICE** | Hardware/DAQ lead | A manually managed IOC lifecycle, physical sequence, device-clock action or a targeted stop requiring additional authorization; **not** a generic operator command |
+| **🟧 SPECIALIST / CONTROLLED SERVICE** | Hardware/DAQ lead | A safety-critical IOC lifecycle, instrument-control step, device-clock action or a targeted forced stop requiring additional authorization. **The routine, manually managed Trend History IOC is 🟩 OPERATOR, not specialist.** |
 | **⬜ REFERENCE / OUTPUT** | Everyone | Historical log snippets, paths or expected output; **not a command to execute** |
 
 Color is reinforced by text labels for terminals and Markdown renderers that do not display color emoji. **Every executable command block below is preceded by one of these labels.** Blocks containing both routine status and expert diagnostics explicitly identify both. Only commands marked **OPERATOR / RUN, STOP, STATUS** or a separately authorized **SPECIALIST** step should be used for normal operation.
@@ -48,7 +48,7 @@ printf 'Account=%s\nWorktree=%s\nBranch=%s\nSHA=%s\n' \
   "$(id -un)" "$PWD" "$(git branch --show-current)" "$(git rev-parse --short HEAD)"
 ```
 
-**Require `utsav`, an explicitly approved branch and the expected SHA before connecting instruments.** As of October 30 the two tested worktrees `main` and `feature/visualizer-integration` have SHA `4846a4d`. Later changes or other worktrees require their own review; an old detached `repo/` checkout is **not** automatically the current baseline. Never run two physical owners from different worktrees at the same time.
+**Require `utsav`, an explicitly approved branch and the expected software release before connecting instruments.** As of the October 30 run, `feature/visualizer-integration` remains at `4846a4d`, while `main` is at `fd67507` after a **runbook-only** commit. Those commits have identical tracked software outside this documentation file. Future code changes or other worktrees require their own review; an old detached `repo/` checkout is **not** automatically the current baseline. Never run two physical owners from different worktrees at the same time.
 
 ### Quick operator command map (full safety conditions are in the numbered sections)
 
@@ -56,11 +56,11 @@ printf 'Account=%s\nWorktree=%s\nBranch=%s\nSHA=%s\n' \
 |---|---|---|
 | Panopticon | `/usr/local/bin/phoebus -settings ... -resource ...` (§2); normal GUI Exit (§12.9) | Verified own-process `TERM` fallback only when necessary (§12.9) |
 | Cryo | `./scripts/genesisctl.sh cryo-status`, `cryo-start`, `cryo-stop`, `cryo-phoebus` (§3, §12.6) | Pi USB/bridge recovery only under hardware SOP |
-| Trend History | View the linked plots (§4) | `screen -dmS genesis-hist ...` and verified `screen -S genesis-hist -X quit` (§4, §12.7) |
+| Trend History | **Start:** `screen -dmS genesis-hist ...`; **status:** `screen -ls | grep genesis-hist`; **stop:** `screen -S genesis-hist -X quit` (§4, §12.7) | Owner/port/log troubleshooting only if routine status fails |
 | Microwave | `./scripts/genesisctl.sh mw-status`, `mw-start`, `mw-rf-ready`, `mw-stop` (§5, §12.4) | Hardware VDI/UCA/USB sequence; independent SIG scope IOC release (§12.4) |
 | PyNMR | `python pynmr_main.py -p Deuteron`; GUI Stop/Exit (§6, §12.3) | Event/FPGA/IPC debugging (§6, §7) |
 | ssRF | `./scripts/genesisctl.sh ssrf-physical-status`, `./scripts/ssrf-start-auto-clock.sh`, `./scripts/genesisctl.sh ssrf-stop` (§7, §12.2) | Pi clock sync is **state-changing**; specialist RF/burn procedures not covered |
-| Magnet | Read-only GUI/readbacks (§8) | Manual read-only IOC launch; specialist-approved monitor release, **not magnet power-down** (§8, §12.5) |
+| Magnet | Read-only GUI/readbacks (§8); authorized monitor status | Ellie’s explicit `genesis-magnet` monitor shutdown, verified child exit, and physical sign-off (§8.4, §12.5); **not magnet ramp-down/power-off** |
 | Master Archiver | `./scripts/genesisctl.sh master-archive-start`, `master-archive-status`, `master-archive-stop` (§9, §12.8) | Per-PV quality/CSV/JSONL diagnostics (§9) |
 | Streamlit | `./scripts/genesisctl.sh archive-viewer`; foreground `Ctrl+C` (§10, §12.1) | Port `8501` owner diagnostics (§10) |
 | Complete-system check | `./scripts/genesisctl.sh status` and per-subsystem status | `screen`, `ps`, `ss`, `ip`, `curl`, archive forensic checks (§11, §12.10–12.11) |
@@ -76,7 +76,7 @@ printf 'Account=%s\nWorktree=%s\nBranch=%s\nSHA=%s\n' \
 1. Confirm authority, equipment readiness, **approved current worktree/SHA**, and exclusive device ownership. Run the per-terminal `$GENESIS_WT` setup.
 2. **Open Panopticon** using its **own** live Phoebus settings. Some widgets are magenta while IOCs are still down; this is expected.
 3. Physically prepare Cryo devices, the shared Raspberry Pi, and connections. Start **all 19 Cryo IOCs** and inspect `cryo-status`. Optionally open the dedicated Cryo GUI.
-4. Start **Trend History IOC**, CA port `5130`; validate that the Panopticon time-history charts populate.
+4. **Operator:** start **Trend History IOC**, CA port `5130`, with §4’s `screen -dmS genesis-hist ...`; validate that the Panopticon time-history charts populate. This is a routine run/status/stop action, not expert maintenance.
 5. Physically prepare the Microwave UCA/VDI/USB/robot connections. Start Microwave under its supervised operator prompt; confirm RF OFF and robot disabled.
 6. Start **PyNMR** in its own terminal; check its hardware route, stream configuration, protected-event socket, and ensure there is no competing fitter or PyNMR producer. **Do not start a standalone fitter.**
 7. Validate Keysight and ssRF hardware, correct its **10 ms waveform period** and Raspberry Pi clock conditions; run `ssrf-start-auto-clock.sh` **once**, which starts the full ssRF stack in **operator burn mode** (inspect current script arguments if it changes). Its **ssRF-owned protected fitter** must bind to the running PyNMR process.
@@ -84,7 +84,7 @@ printf 'Account=%s\nWorktree=%s\nBranch=%s\nSHA=%s\n' \
 9. **Magnet (optional, specialist only):** with Magnet operator authorization, start the IPS120 IOC **read-only** if permitted. It was offline on October 29, but a separate read-only IOC session was observed on October 30. Magnet release requires physical HOLD/heater/monitoring sign-off (§8.4, §12.5).
 10. Start **Unified Master Archiver** (`448` configured PVs in the October 29 release); check rising snapshots/events and quality. Open the **Streamlit viewer** and inspect its live archive session.
 
-**Shutdown (reverse/safe):** close Streamlit; safe-stop **ssRF first**, then PyNMR; safe-stop Microwave and complete its physical shutdown; stop any **independent Siglent scope** after measurement release; stop optional **read-only Magnet IOC only under its physical specialist procedure**; safe-stop Cryo after confirming coldboard OFF and independent monitoring; stop Trend History; request/verify Master Archiver finalization; close **Panopticon LAST**. Verify both screen **and child-process/port** exit, plus archive persistence. During network loss use §12.11 rather than force-clearing ports.
+**Shutdown (reverse/safe):** close Streamlit; safe-stop **ssRF first**, then PyNMR; safe-stop Microwave and complete its physical shutdown; stop any **independent Siglent scope** after measurement release; stop optional **read-only Magnet IOC only under its physical specialist procedure**; safe-stop Cryo after confirming coldboard OFF and independent monitoring; **operator-stop Trend History** (`screen -S genesis-hist -X quit`); request/verify Master Archiver finalization; close **Panopticon LAST**. Verify both screen **and child-process/port** exit, plus archive persistence. During network loss use §12.11 rather than force-clearing ports.
 
 **Never use** `./scripts/genesisctl.sh stop` or `force-stop` as generic shutdowns; they are deliberately disabled. Never run Ellie's `scripts/live_laptop/start.sh` or `stop.sh` unreviewed on any live worktree: that launcher has a different environment/layout, starts a standalone fitter, can **edit Magnet and LS455 YAML**, and includes aggressive stop behavior. Use the subsystem-specific commands below.
 
@@ -317,18 +317,25 @@ Do not launch a second physical Cryo IOC manager because a GUI is blank. Check f
 
 **Problem observed:** Cryo was live but Panopticon Magnet/fridge XY-history plots were blank. **Fix:** start the **dedicated Trend History IOC** on CA `5130` (not the Master Archiver). This run restored chart history, monitored **37 PVs**, and backfilled approximately **883 points** from existing Cryo CSV.
 
-In Terminal 2, first check for an owner:
+The operator starts, checks, and stops Trend History like any other routine monitoring subsystem. It has **no `genesisctl.sh` wrapper in this baseline**, so the **exact `screen` commands are the routine operator commands**. It is read-only and does not actuate hardware. Start only after Cryo is running and do not create a second owner.
 
-**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+**🟩 OPERATOR / TREND HISTORY STATUS (READ-ONLY):**
 
 ```bash
-screen -ls | grep genesis-hist || true
-sudo ss -ltnp | grep ':5130 ' || true
+screen -ls | grep genesis-hist || echo '[DOWN] No local Trend History screen'
 ```
 
-If **neither** a `genesis-hist` screen nor another `5130` owner is present, start it from the approved worktree [RUN]:
+If a local `genesis-hist` is already active, **reuse it**. If no local screen exists, an unexpected occupied port requires an expert owner check, not a second launch:
 
-**🟧 SPECIALIST / MANUALLY START TREND HISTORY IOC:**
+**🟦 EXPERT / CHECK UNEXPECTED HISTORY PORT OWNER (READ-ONLY, IF NEEDED):**
+
+```bash
+ss -ltnp | grep -E ':(5130|5230)\b' || true
+```
+
+If **neither** the session nor either port is in use, launch from the current approved worktree:
+
+**🟩 OPERATOR / START TREND HISTORY IOC:**
 
 ```bash
 cd "$GENESIS_WT"
@@ -337,14 +344,19 @@ screen -dmS genesis-hist \
   bash -c 'python -u master_ioc.py -s configs/target_physical/trend_history -i trend_history >> logs/trend_history_live.log 2>&1'
 ```
 
-Verify:
+Verify the routine service state and plot updates:
 
-**🟦 EXPERT / READ-ONLY DIAGNOSTIC OR STATUS INSPECTION:**
+**🟩 OPERATOR / TREND HISTORY STATUS:**
 
 ```bash
-screen -ls | grep genesis-hist
-sudo ss -ltnp | grep ':5130 ' || true
-tail -40 logs/trend_history_live.log
+screen -ls | grep genesis-hist || echo '[DOWN] Trend History not running locally'
+```
+
+**🟦 EXPERT / PORT AND LOG DIAGNOSTICS (ONLY IF STATUS/PLOTS FAIL):**
+
+```bash
+ss -ltnp | grep -E ':(5130|5230)\b' || true
+tail -40 "$GENESIS_WT/logs/trend_history_live.log"
 ```
 
 In Panopticon, check the Cryo pressure/flow and fridge/magnet plots: **history traces should fill and update**. For a Phoebus plot/databrowser `.plt` linked from a subsystem screen, use the existing linked plot file; do not invent a PV name or open an older simulation plot. Discover installed plot resources if needed:
@@ -650,7 +662,9 @@ The Magnet power supply was **OFF/disconnected** in the October 29 integration v
 
 ### 8.1 Source files and safety settings [CHECK]
 
-- `scripts/live_laptop/start.sh` — Ellie version, contains read-only magnet IOC launch **but also unsafe-for-this-release changes**, so **do not execute the entire script**.
+- [Ellie `STARTUP_INSTRUCTIONS.md`, §3/§5](https://raw.githubusercontent.com/ellie-long/UNH-Genesis-Control/dev-visualizer/STARTUP_INSTRUCTIONS.md) — explicitly starts `genesis-magnet` on `5131/5231`; §5 closes it with `screen -S genesis-magnet -X quit` during a whole-stack software shutdown.
+- [Ellie `scripts/live_laptop/start.sh`](https://raw.githubusercontent.com/ellie-long/UNH-Genesis-Control/dev-visualizer/scripts/live_laptop/start.sh) — read-only Magnet IOC launch, **but also has an opt-in edit that enables Magnet writes**; do **not** execute the whole script in this controlled checkout.
+- [Ellie `scripts/live_laptop/stop.sh`](https://raw.githubusercontent.com/ellie-long/UNH-Genesis-Control/dev-visualizer/scripts/live_laptop/stop.sh) — her exact Magnet shutdown implementation: `quit_session genesis-magnet "master_ioc.py -s configs/magnet_physical/ips120"`, which first quits the matching screen and then sends `kill` to matching processes. **Treat the `pgrep -f` / broad-match fallback as historical source, not a safe command to copy into this runbook.**
 - `configs/magnet_physical/ips120/settings.yaml` — Oxford IPS120-10, `192.168.1.250:5001`, `write_enabled: false` by default; physical network serial server at TXI017, 9600 8N2.
 - `configs/magnet_physical/ioc_manager/settings.yaml` — IPS120 IOC CA `5131`, manager `5132`, `ips120.autostart: false`.
 - `magnet_ioc/PORTING.md`, `magnet_ioc/interlocks.py`, `magnet_ioc/device.py` — review before control or operation.
@@ -703,7 +717,9 @@ If the IOC starts but `COMM=0`, or logs show the serial server is already in use
 A manual `genesis-magnet` IOC has **no dedicated verified `genesisctl.sh magnet-stop` command** here. Shutdown is a separately authorized specialist action with explicit front-panel inspection, not a generic software stop. See **§8.4** and **§12.5**. If safe release cannot be established, retain the IOC and independent monitoring.
 
 
-### 8.4 Magnet IOC shutdown / release, including October 30 lesson [SPECIALIST]
+### 8.4 Magnet IOC shutdown / release, with Ellie's original stop instructions [SOURCE + SPECIALIST]
+
+**What Ellie's repository actually instructs:** Her `STARTUP_INSTRUCTIONS.md` §5 lists `screen -S genesis-magnet -X quit` in the full-system stop. Her `scripts/live_laptop/stop.sh` calls `quit_session genesis-magnet "master_ioc.py -s configs/magnet_physical/ips120"`. That helper closes the `screen` and attempts to terminate surviving matching processes. **Neither source gives a physical IPS120 ramp-down, heater transition, persistent-mode conversion or magnet power-off sequence.** Those are not implicit parts of a software shutdown. **Do not execute Ellie's entire `stop.sh` here**: its generic process matching and Cryo fallback bypass the identity and safety checks of the current worktree. Use the verified, targeted steps below instead.
 
 **This is a monitoring-service shutdown, not a physical magnet shutdown.** Do not change current setpoints, ramp rates, heater state, persistent-mode state, or power. The IOC's current profile explicitly says `write_enabled: false`; confirm that live configuration before proceeding. The October 30 `caget` check could not run because `caget` was not installed, so missing CLI results were **not** evidence that the magnet was holding.
 
@@ -720,9 +736,11 @@ ss -ltnp | grep -E ':(5131|5231)\b' || true
 # tail -50 /proc/ACTUAL_MAGNET_PID/cwd/logs/magnet_ips120_live.log
 ```
 
-**🟧 SPECIALIST / STOP THE VERIFIED READ-ONLY MONITOR AFTER PHYSICAL SIGN-OFF:**
+**🟧 SPECIALIST / ELLIE'S MAGNET IOC STOP, AFTER PHYSICAL SIGN-OFF (SOFTWARE ONLY):**
 
 ```bash
+# This is the actual screen shutdown shown in Ellie's STARTUP_INSTRUCTIONS.md §5.
+# Use only after the physical release checklist above and ownership check pass.
 screen -S genesis-magnet -X quit
 ```
 
@@ -734,7 +752,7 @@ ps -eo user,pid,args --cols 300 | grep '[m]aster_ioc.py -s configs/magnet_physic
 ss -ltnp | grep -E ':(5131|5231)\b' || echo '[PASS] Magnet CA/PVA ports not listening'
 ```
 
-The screen may disappear before its Python child releases a socket. If a matching IOC persists, first verify its **current** PID, user, start time and `/proc/<PID>/cwd`; inspect logs and confirm specialist approval before a **targeted graceful SIGTERM**. Never paste an old PID from October 30 (`41853` was historical), use `kill -9`, or kill a different Magnet/LabVIEW owner. Recheck the ports after termination. If the IOC was being used for required monitoring, do not release it even if only two ports remain occupied.
+**Ellie's `stop.sh` goes one step further:** after the screen quit, it searches for processes matching `master_ioc.py -s configs/magnet_physical/ips120` and sends `SIGTERM`. **Do not copy its `pgrep -f` loop or run it as a whole-stack stop.** The screen may disappear before its Python child releases a socket. If a matching IOC persists, first verify its **current** PID, user, start time and `/proc/<PID>/cwd`; inspect logs and confirm specialist approval before a **targeted graceful SIGTERM**. Never paste an old PID from October 30 (`41853` was historical), use `kill -9`, or kill a different Magnet/LabVIEW owner. Recheck the ports after termination. If the IOC was being used for required monitoring, do not release it even if only two ports remain occupied.
 
 **October 30 specific observation:** a script requiring the literal `MAGNET SAFE` exited with `[STOP] Magnet monitoring retained` because that physical confirmation was not entered; later `screen -S 41847.genesis-magnet -X quit` removed the screen, and `5131/5231` were confirmed free. The final software state was checked, **not** the physical HOLD/heater state. Future operators must not treat those historical commands as blanket clearance.
 
@@ -1166,7 +1184,9 @@ ss -ltnp | grep -E ':(5095|5096)\b' || echo '[PASS] Scope IOC CA/PVA ports not l
 
 **October 30 lesson:** immediately after the screen was closed, Python PID `39803` still appeared on `5095/5096`; a later check found it had exited. Do not mistake screen disappearance for port release, and do not reuse historical PIDs. If the *same identified child* persists, escalate to the subsystem owner for a targeted graceful termination, not blanket process killing.
 
-### 12.5 Magnet IOC: specialist-controlled monitoring release [30-OCT OBSERVED]
+### 12.5 Magnet IOC: Ellie's shutdown sequence, safely adapted [SOURCE; 30-OCT OBSERVED]
+
+**Source cross-check:** [Ellie manual stop (§5)](https://raw.githubusercontent.com/ellie-long/UNH-Genesis-Control/dev-visualizer/STARTUP_INSTRUCTIONS.md) explicitly uses `screen -S genesis-magnet -X quit`. [Ellie automatic stop (`quit_session`)](https://raw.githubusercontent.com/ellie-long/UNH-Genesis-Control/dev-visualizer/scripts/live_laptop/stop.sh) then attempts a broad matching-process `SIGTERM`; that fallback is **not** automatically safe in a shared WSL/DAQ host and is not reproduced here. **Stop the actual `genesis-magnet` software monitor only after specialist release approval. There is no verified physical magnet power-down sequence in either Ellie source.**
 
 **Never confuse release of a read-only IOC with safe ramp-down, heater transition, or powering off the magnet.** The IPS120 power system can remain energized while a monitor is stopped. A software stop is allowed **only after** the responsible Magnet operator independently confirms the supply is holding (not ramping), no switch-heater transition/abnormal alarm is active, and independent field/current/cryogenic safety monitoring remains in place. The current config is `write_enabled: false`; confirm that in the active worktree. If an operation is active or the state is unverified, **retain the Magnet IOC** and follow the Magnet specialist SOP; do not use the steps below.
 
@@ -1182,7 +1202,7 @@ ss -ltnp | grep -E ':(5131|5231)\b' || true
 
 For a manual `genesis-magnet` screen, identify its actual process working directory with `readlink -f /proc/<CURRENT_PID>/cwd`, then inspect **that worktree's** `logs/magnet_ips120_live.log` (do not guess that `main/logs/` contains it). The Oct 30 Magnet IOC ran from `visualizer-integration` while subsequent commands ran from `main`. If `caget` is absent, do not infer safe state; independent front-panel confirmation remains required.
 
-**🟧 SPECIALIST / RELEASE ONLY THE APPROVED READ-ONLY MAGNET IOC:**
+**🟧 SPECIALIST / ELLIE'S MAGNET MONITOR STOP (ONLY AFTER REQUIRED APPROVAL):**
 
 ```bash
 screen -S genesis-magnet -X quit
@@ -1233,19 +1253,36 @@ screen -ls | grep genesis-cryo || echo '[PASS] No Cryo screen sessions'
 
 Do not power off the shared Pi: it is the host for Keysight and Cryo bridges. The managed Cryo stop handled **bridges** only, not a Pi reboot.
 
-### 12.7 Trend History IOC: stop after Cryo [29-OCT RUN]
+### 12.7 Trend History IOC: routine operator stop after Cryo [29-OCT RUN]
 
-This was launched as detached `genesis-hist` manually, so it did not have a `genesisctl.sh` stop in the Oct 29 procedure. Verify owner and close **only the exact session**:
+**Trend History start/status/stop is 🟩 OPERATOR, not 🟦 EXPERT or 🟧 SPECIALIST.** This read-only plotting IOC runs as the dedicated `genesis-hist` screen, without a `genesisctl.sh` wrapper. The actual startup command is in §4. Keep the Unified Master Archiver distinct: the latter has its own `master-archive-stop` command and should continue recording shutdown until the end of the sequence.
 
-**🟧 SPECIALIST / CONDITIONAL MANAGED MONITOR RELEASE:**
+**🟩 OPERATOR / CONFIRM TREND HISTORY IS RUNNING:**
 
 ```bash
-screen -ls | grep genesis-hist || true
-screen -S genesis-hist -X quit
-screen -ls | grep genesis-hist || echo '[PASS] Trend History stopped'
+screen -ls | grep genesis-hist || echo '[DOWN] Trend History already stopped'
 ```
 
-Do not use `screen -X quit` with an unverified global session pattern. If `genesis-hist` does not exist, it may already be stopped; do not guess another session to terminate.
+**🟩 OPERATOR / STOP TREND HISTORY (ONLY THE OWNED SESSION):**
+
+```bash
+screen -S genesis-hist -X quit
+```
+
+**🟩 OPERATOR / VERIFY STOP:**
+
+```bash
+screen -ls | grep genesis-hist || echo '[PASS] Trend History screen stopped'
+```
+
+**🟦 EXPERT / ONLY IF THE SCREEN IS GONE BUT A PORT OR CHILD REMAINS:**
+
+```bash
+ss -ltnp | grep -E ':(5130|5230)\b' || echo '[PASS] History ports released'
+ps -eo user,pid,ppid,args --cols 260 | grep '[m]aster_ioc.py -s configs/target_physical/trend_history' || true
+```
+
+If the history screen has already stopped, no further operator action is needed. An unexpectedly held port requires identity/owner diagnostics; **do not kill an unidentified IOC or another user's service**.
 
 ### 12.8 Unified Master Archiver: clean stop and finalization [29-OCT RUN]
 
@@ -1475,7 +1512,8 @@ After independent safe-readback and switch-route verification, **in this order**
 | `configs/target_physical/trend_history/` | Trend History IOC profile on port 5130 |
 | `configs/magnet_physical/ips120/settings.yaml` | **Default read-only** Magnet physical profile |
 | `magnet_ioc/PORTING.md` | Magnet implementation and safety reference |
-| `scripts/live_laptop/start.sh` | **Historical Ellie startup source only**. Do not run wholesale in this worktree |
+| `scripts/live_laptop/start.sh` | Historical Ellie startup source. Do not run wholesale; may enable magnet hardware writes |
+| `scripts/live_laptop/stop.sh` | Historical Ellie Magnet software-close source (`quit_session genesis-magnet ...`); **do not run wholesale** or copy broad `pgrep -f` kill logic |
 | `docs/operations/MASTER_ARCHIVER_OPERATOR.md` | Archiver operator guide |
 | `archive/master_sources.yaml` | PV registry / subsystem sources |
 | `docs/nmr_dual_source_commissioning.md` | Historical protected NMR route/IPC; **not** permission to use LabVIEW source |
@@ -1514,6 +1552,6 @@ After copying/reviewing the new Markdown, inspect `git diff --check` and the doc
 
 ### 14.4 Provenance, October 30 update and known limits
 
-The original runbook was compiled from the October 29 startup/diagnostic/shutdown transcript, October 26/29 handoff notes, operator cheatsheet, and selected Ellie/Prof. Long startup-script, Magnet and PyNMR excerpts. This edition additionally incorporates the **October 30** user-supplied Git promotion and successful `main` run report, network-loss/failed-safe-stop console output, read-only status checks, manual Magnet/Siglent screen release, and final local port/screen/archiver verification. The October 30 output **does not independently show physical Magnet HOLD/heater verification, all hardware RF-safe readbacks at final exit, or a new complete burn acceptance**. No hardware was operated or Git branch changed by authoring this Markdown. Source-derived commands and profiles should be rechecked in the actual live worktree before use.
+The original runbook was compiled from the October 29 startup/diagnostic/shutdown transcript, October 26/29 handoff notes, operator cheatsheet, and selected Ellie/Prof. Long startup-script, Magnet and PyNMR excerpts. This revision explicitly cross-checked Ellie's publicly accessible `dev-visualizer` `STARTUP_INSTRUCTIONS.md` (§5) and `scripts/live_laptop/stop.sh` to distinguish her actual Magnet IOC close from an undocumented physical magnet shutdown; it also classifies Trend History start/status/stop as routine operator actions. This edition additionally incorporates the **October 30** user-supplied Git promotion and successful `main` run report, network-loss/failed-safe-stop console output, read-only status checks, manual Magnet/Siglent screen release, and final local port/screen/archiver verification. The October 30 output **does not independently show physical Magnet HOLD/heater verification, all hardware RF-safe readbacks at final exit, or a new complete burn acceptance**. No hardware was operated or Git branch changed by authoring this Markdown. Source-derived commands and profiles should be rechecked in the actual live worktree before use.
 
 **Operator principle:** Prefer guarded `genesisctl` status/start/stop, exact identity/port/log diagnostics, fresh physical device readbacks and a responsible human check over deletion of locks, clock/USB resets, force-killing owners, or unsafe RF/Magnet control. A clear port and a visible GUI are neither physical safety evidence nor hardware acceptance.
