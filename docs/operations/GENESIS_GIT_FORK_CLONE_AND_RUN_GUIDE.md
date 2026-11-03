@@ -15,7 +15,7 @@
 ## What you will accomplish
 
 1. Create and secure a free GitHub account.
-2. Install Git and GitHub CLI (`gh`) in Ubuntu.
+2. Verify shared Git and GitHub CLI (`gh`) tools without sudo.
 3. Configure your Git name/email and authenticate *your own* Ubuntu account.
 4. Fork Genesis into **your GitHub account**, then clone your fork into **your Ubuntu home directory**.
 5. Verify that Git's `origin` is *your fork* and `upstream` is the original project.
@@ -52,28 +52,37 @@ pwd
 ls -ld "$HOME"
 ```
 
-The home directory should belong to your Ubuntu user, usually `/home/<your-ubuntu-user>`. All new files below go into `$HOME`, not `/home/utsav/...`. If you don't have an Ubuntu account or `sudo` permission, ask the machine administrator; do not modify other users' homes.
+The home directory should belong to your Ubuntu user, usually `/home/<your-ubuntu-user>`. All new files below go into `$HOME`, not `/home/utsav/...`. If you do not have an Ubuntu account, ask the administrator. Sudo privileges are not required for normal Git operations; do not modify other users' homes.
 
-### 3. Install Git and helpful Ubuntu tools
+### 3. Verify shared Ubuntu tools (no sudo required)
 
-**✅ ROUTINE — the only place where `sudo` is normally used for system packages:**
+**All Ubuntu users can follow these instructions without sudo privileges.**
 
-```bash
-sudo apt update
-sudo apt install -y git gh screen curl ca-certificates
-```
+On the shared Genesis Ubuntu machine, the administrator has already
+installed Git, GitHub CLI, GNU Screen, curl and wget system-wide.
+All nine existing Ubuntu accounts have been verified to access them.
 
-If `gh` is unavailable from your Ubuntu package sources, use the official install instructions at https://github.com/cli/cli/blob/trunk/docs/install_linux.md or ask the administrator. Do **not** add unreviewed package repositories just to make these commands pass.
-
-**🔎 CHECK:**
+**✅ ROUTINE — Run these checks in your own Ubuntu account:**
 
 ```bash
+whoami
 git --version
-gh --version
+gh --version | head -1
 screen --version | head -1
+curl --version | head -1
+wget --version | head -1
 ```
 
-**Never use `sudo git clone`, `sudo git commit`, `sudo git push`, or `sudo pip install` for this project.** Doing so can give files the wrong owner or share credentials across accounts.
+If these commands succeed, continue to Section 4.
+
+**If a tool is missing:** Contact the Ubuntu administrator.
+Only the administrator needs to install shared system packages.
+Standard users do not need sudo privileges.
+
+Never use sudo for Git clone, commit, push or personal Conda setup.
+Each user must configure their own GitHub credentials and Git identity.
+
+---
 
 ### 4. Configure your personal Git identity
 
@@ -530,7 +539,7 @@ A pull request is optional. **You can work indefinitely on your own fork without
 
 ### 21. Troubleshooting
 
-**"git: command not found"**: Repeat Step 3 or ask for system package access. Do not reinstall Git into another person's home.
+**"git: command not found"**: Ask the Ubuntu administrator to install Git system-wide. Do not reinstall Git into another person's home.
 
 **"gh: command not found" / authentication failed**: Install GitHub CLI, rerun `gh auth login` as **your Ubuntu user** and check `gh auth status`. Do not paste access tokens into chat, documents, shell history or Git URLs.
 
